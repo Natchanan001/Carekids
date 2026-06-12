@@ -45,5 +45,12 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>CareKids requires access to your camera so you can take and attach photos of the child's symptoms to their health logs.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CareKids requires access to your photo library so you can select and upload photos of the child's symptoms to their health logs.</string>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CareKids requires access to your device's location to find and display nearby pediatric clinics and hospitals on the map.</string>
 </dict>
 </plist>
