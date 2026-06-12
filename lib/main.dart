@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'detai_page.dart';
 
 void main() {
   runApp(const Carekids());
@@ -143,3 +144,4 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+}
