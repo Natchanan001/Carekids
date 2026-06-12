@@ -4,17 +4,22 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'detai_page.dart';
 
 void main() async {
-  // เคลียร์สายให้เคลียร์ใจ เพื่อให้ Flutter เตรียมพร้อมรันโค้ด Async
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. โหลดไฟล์ .env เข้ามาในระบบก่อน
-  await dotenv.load(fileName: ".env");
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint("❌ โหลด .env ไม่ได้: $e");
+  }
 
-  // 3. เริ่มต้นระบบ Supabase โดยดึงค่าจากไฟล์ .env มาใช้
-  await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL'] ?? '',
-    anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
-  );
+  final url = dotenv.env['SUPABASE_URL'] ?? '';
+  final key = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+
+  if (url.isEmpty || key.isEmpty) {
+    debugPrint("❌ SUPABASE_URL หรือ SUPABASE_ANON_KEY ว่างอยู่!");
+  }
+
+  await Supabase.initialize(url: url, anonKey: key);
 
   runApp(const Carekids());
 }
