@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:carekids/features/auth/screens/login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -96,6 +97,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ? const CircularProgressIndicator()
                     : const Text('Sign Up'),
               ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+              ),
+              child: const Text("Already have an account? Log In"),
             ),
           ],
         ),
