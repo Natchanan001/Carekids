@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:carekids/features/auth/screens/register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -61,8 +62,11 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Don't have an account? Sign Up"),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const RegisterScreen()),
+               ),
+               child: const Text("Don't have an account? Sign Up"),
             ),
           ],
         ),
