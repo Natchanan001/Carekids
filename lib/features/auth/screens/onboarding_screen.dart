@@ -29,12 +29,53 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() => _currentPage++);
   }
 
+  // STEP 1 -> สร้าง family + profile (role: admin) ครั้งแรกที่กด "Next"
+  Future<void> _createFamilyAndProfile() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser!;
+    final meta = user.userMetadata ?? {};
+
+    final family = await supabase
+        .from('families')
+        .insert({'name': '${_familyNameController.text.trim()}\'s Family'})
+        .select()
+        .single();
+
+    await supabase.from('profiles').insert({
+      'id': user.id,
+      'family_id': family['id'],
+      'first_name': meta['first_name'] ?? '',
+      'last_name': meta['last_name'] ?? '',
+      'role': 'admin',
+      'onboarding_complete': false, // จะเปลี่ยนเป็น true ตอน step สุดท้าย
+    });
+  }
+
+  Future<void> _handleStep1Next() async {
+    if (_familyNameController.text.isEmpty) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await _createFamilyAndProfile();
+      _nextPage();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An error occurred.: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // STEP 3 -> เพิ่มข้อมูลเด็ก + mark onboarding complete
   Future<void> _saveAndFinish() async {
     if (_childNameController.text.isEmpty ||
         _weightController.text.isEmpty ||
         _selectedBirthdate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('กรุณากรอกข้อมูลเด็กให้ครบ')),
+        const SnackBar(content: Text('Please fill in all child information')),
       );
       return;
     }
@@ -45,7 +86,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       final supabase = Supabase.instance.client;
       final userId = supabase.auth.currentUser!.id;
 
-      // Update family name
       final profile = await supabase
           .from('profiles')
           .select('family_id')
@@ -53,11 +93,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           .single();
 
       final familyId = profile['family_id'];
-
-      await supabase
-          .from('families')
-          .update({'name': _familyNameController.text.trim()})
-          .eq('id', familyId);
 
       // Add child information
       await supabase.from('children').insert({
@@ -77,11 +112,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+          SnackBar(content: Text('An error occurred.: $e')),
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -154,8 +189,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _familyNameController.text.isEmpty ? null : _nextPage,
-              child: const Text('Next'),
+              onPressed: (_familyNameController.text.isEmpty || _isLoading)
+                  ? null
+                  : _handleStep1Next,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Next'),
             ),
           ),
         ],
@@ -296,7 +342,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           TextButton(
             onPressed: _isLoading ? null : _saveAndFinish,
-            child: const Text('Skip for Now Invite Later'),
+            child: const Text('Skip for Now, Invite Later'),
           ),
         ],
       ),
