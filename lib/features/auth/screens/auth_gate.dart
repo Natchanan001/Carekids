@@ -22,10 +22,14 @@ class AuthGate extends StatelessWidget {
               .single(),
           builder: (context, profileSnapshot) {
             if (profileSnapshot.hasError) {
-              return Scaffold(
-                body: Center(child: Text('Error: ${profileSnapshot.error}')),
-           );
-      }
+            // profile หาไม่เจอ (เช่น user ถูกลบ) → sign out แล้วกลับไป login
+              Future.microtask(() {
+                Supabase.instance.client.auth.signOut();
+              });
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
             if (!profileSnapshot.hasData) {
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
