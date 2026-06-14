@@ -62,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             TextButton(
-                onPressed: () => Navigator.push(
+                onPressed: () => Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (context) => const RegisterScreen()),
                ),
