@@ -21,6 +21,11 @@ class AuthGate extends StatelessWidget {
               .eq('id', session.user.id)
               .single(),
           builder: (context, profileSnapshot) {
+            if (profileSnapshot.hasError) {
+              return Scaffold(
+                body: Center(child: Text('Error: ${profileSnapshot.error}')),
+           );
+      }
             if (!profileSnapshot.hasData) {
               return const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
@@ -33,7 +38,7 @@ class AuthGate extends StatelessWidget {
 
             if (!onboardingComplete) return const OnboardingScreen();
 
-            // เดี๋ยวเปลี่ยนเป็น DashboardScreen ตอนทำ F004
+            // เดี๋ยวเปลี่ยนเป็น DashboardScreen ตอนทำ F00
             return const Scaffold(
               body: Center(child: Text('Dashboard 🏠')),
             );
