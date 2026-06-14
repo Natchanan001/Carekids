@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carekids/features/auth/screens/login_screen.dart';
 import 'package:carekids/features/auth/screens/onboarding_screen.dart';
 import 'package:carekids/features/auth/screens/role_selection_screen.dart';
+import 'package:carekids/features/dashboard/screens/dashboard_screen.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -51,9 +52,7 @@ class AuthGate extends StatelessWidget {
             }
 
             // เคสที่ 3: ผ่านทุกด่านหมดแล้ว สับเข้าหน้าหลัก Dashboard สวย ๆ (เดี๋ยวเปลี่ยนร่างตอนทำ F002)
-            return const Scaffold(
-              body: Center(child: Text('Dashboard 🏠')),
-            );
+            return const DashboardScreen();
           },
         );
       },

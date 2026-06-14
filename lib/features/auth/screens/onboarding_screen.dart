@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:carekids/features/dashboard/screens/dashboard_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -19,6 +20,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _childNameController = TextEditingController();
   final _weightController = TextEditingController();
   DateTime? _selectedBirthdate;
+  String? _selectedGender; // 'male' or 'female'
   bool _isLoading = false;
 
   void _nextPage() {
@@ -27,6 +29,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       curve: Curves.easeInOut,
     );
     setState(() => _currentPage++);
+  }
+
+  void _prevPage() {
+    _pageController.previousPage(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    setState(() => _currentPage--);
   }
 
   // STEP 1 -> สร้าง family + profile (role: admin) ครั้งแรกที่กด "Next"
@@ -47,7 +57,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'first_name': meta['first_name'] ?? '',
       'last_name': meta['last_name'] ?? '',
       'role': 'admin',
-      'onboarding_complete': false, // จะเปลี่ยนเป็น true ตอน step สุดท้าย
+      'onboarding_complete': false,
     });
   }
 
@@ -73,7 +83,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _saveAndFinish() async {
     if (_childNameController.text.isEmpty ||
         _weightController.text.isEmpty ||
-        _selectedBirthdate == null) {
+        _selectedBirthdate == null ||
+        _selectedGender == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill in all child information')),
       );
@@ -100,6 +111,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         'name': _childNameController.text.trim(),
         'birthdate': _selectedBirthdate!.toIso8601String().split('T')[0],
         'weight_kg': double.parse(_weightController.text),
+        'gender': _selectedGender,
       });
 
       // mark onboarding complete by updating profile
@@ -108,7 +120,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           .update({'onboarding_complete': true})
           .eq('id', userId);
 
-      // AuthGate จะ detect และไป Dashboard เอง
+      // Navigate ไป Dashboard ตรงๆ (AuthGate จะไม่ rebuild เอง)
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An error occurred.: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleSkip() async {
+    setState(() => _isLoading = true);
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser!.id;
+
+      await supabase
+          .from('profiles')
+          .update({'onboarding_complete': true})
+          .eq('id', userId);
+
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          (route) => false,
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -180,6 +226,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(height: 32),
           TextField(
             controller: _familyNameController,
+            onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               labelText: 'Family Name e.g., The Smiths',
               border: OutlineInputBorder(),
@@ -231,6 +278,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // Gender selector
+          const Text('Gender', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ChoiceChip(
+                  label: const Text('Male'),
+                  selected: _selectedGender == 'male',
+                  onSelected: (_) => setState(() => _selectedGender = 'male'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ChoiceChip(
+                  label: const Text('Female'),
+                  selected: _selectedGender == 'female',
+                  onSelected: (_) => setState(() => _selectedGender = 'female'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
           TextField(
             controller: _weightController,
             decoration: const InputDecoration(
@@ -257,12 +329,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 : 'Birthdate: ${_selectedBirthdate!.day}/${_selectedBirthdate!.month}/${_selectedBirthdate!.year}'),
           ),
           const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _nextPage,
-              child: const Text('Next'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _prevPage,
+                  child: const Text('Back'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _nextPage,
+                  child: const Text('Next'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -331,17 +413,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             },
           ),
           const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _saveAndFinish,
-              child: _isLoading
-                  ? const CircularProgressIndicator()
-                  : const Text('Get Started with CareKids!'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isLoading ? null : _prevPage,
+                  child: const Text('Back'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _saveAndFinish,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Get Started with CareKids!'),
+                ),
+              ),
+            ],
           ),
           TextButton(
-            onPressed: _isLoading ? null : _saveAndFinish,
+            onPressed: _isLoading ? null : _handleSkip,
             child: const Text('Skip for Now, Invite Later'),
           ),
         ],
