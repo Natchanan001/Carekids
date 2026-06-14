@@ -23,28 +23,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final supabase = Supabase.instance.client;
 
       // 1. Sign up for Authentication
-      final authResponse = await supabase.auth.signUp(
+      await supabase.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        data: {
+          'first_name': _firstNameController.text.trim(),
+          'last_name': _lastNameController.text.trim(),
+        },
       );
-
-      final userId = authResponse.user!.id;
-
-      // 2. Create an automatic Family Account
-      final familyResponse = await supabase
-          .from('families')
-          .insert({'name': '${_firstNameController.text}\'s Family'})
-          .select()
-          .single();
-
-      // 3. Create User Profile mapped with family_id and default 'admin' role
-      await supabase.from('profiles').insert({
-        'id': userId,
-        'family_id': familyResponse['id'],
-        'first_name': _firstNameController.text.trim(),
-        'last_name': _lastNameController.text.trim(),
-        'role': 'admin',
-      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
