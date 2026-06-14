@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:carekids/features/auth/screens/register_screen.dart';
+import 'package:carekids/features/auth/screens/auth_gate.dart';
+
+// home: const AuthGate(), --- IGNORE ---
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,7 +29,7 @@ class CareKids extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
       ),
-      home: const RegisterScreen(),
+      home: const AuthGate(),
     );
   }
 }
