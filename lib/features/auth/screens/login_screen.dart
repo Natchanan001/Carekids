@@ -68,6 +68,18 @@ class _LoginScreenState extends State<LoginScreen> {
                ),
                child: const Text("Don't have an account? Sign Up"),
             ),
+            TextButton(
+              onPressed: () async {
+                await Supabase.instance.client.auth.signOut();
+                if (context.mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  );
+                }
+              },
+              child: const Text('Sign out (debug)'),
+            ),
           ],
         ),
       ),
