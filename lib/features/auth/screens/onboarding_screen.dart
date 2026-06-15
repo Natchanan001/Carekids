@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carekids/features/dashboard/screens/dashboard_screen.dart';
+import 'package:carekids/features/auth/screens/role_selection_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -245,24 +246,40 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: (_familyNameController.text.isEmpty || _isLoading)
-                  ? null
-                  : _handleStep1Next,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                onPressed: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (context) => const RoleSelectionScreen(),
                       ),
-                    )
-                  : const Text('Next'),
-            ),
-          ),
+                    );
+                  },
+                  child: const Text('Back'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: (_familyNameController.text.isEmpty || _isLoading)
+                      ? null
+                      : _handleStep1Next,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Next'),
+                ),
+              ),
+            ],
+          )
         ],
       ),
     );
