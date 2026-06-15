@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carekids/features/auth/screens/onboarding_screen.dart';
 import 'package:carekids/features/auth/screens/caregiver_join_screen.dart';
+import 'package:carekids/features/auth/screens/login_screen.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
@@ -51,6 +53,18 @@ class RoleSelectionScreen extends StatelessWidget {
                     child: Text('I am a caregiver (have an invitation code)'),
                   ),
                 ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await Supabase.instance.client.auth.signOut();
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (route) => false,
+                    );
+                  }
+                },
+                child: const Text('Sign out (debug)'),
               ),
             ],
           ),
