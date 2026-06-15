@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:carekids/features/auth/screens/onboarding_screen.dart';
-import 'package:carekids/features/auth/screens/caregiver_join_screen.dart';
-import 'package:carekids/features/auth/screens/login_screen.dart';
+import 'package:carekids/features/auth/screens/role_selection_screen.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
-  const RoleSelectionScreen({super.key});
+  final void Function(String role) onRoleSelected;
+
+  const RoleSelectionScreen({super.key, required this.onRoleSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -24,14 +24,10 @@ class RoleSelectionScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 16, color: Colors.grey)),
               const SizedBox(height: 32),
 
-              // Admin path
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-                  ),
+                  onPressed: () => onRoleSelected('admin'),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Text('I am a parent (create a new family)'),
@@ -40,29 +36,21 @@ class RoleSelectionScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // Caregiver path
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CaregiverJoinScreen()),
-                  ),
+                  onPressed: () => onRoleSelected('caregiver'),
                   child: const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Text('I am a caregiver (have an invitation code)'),
                   ),
                 ),
               ),
+
               TextButton(
                 onPressed: () async {
                   await Supabase.instance.client.auth.signOut();
-                  if (context.mounted) {
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  }
+                  // AuthGate จะ detect แล้วเด้งไป LoginScreen ให้เองอัตโนมัติ
                 },
                 child: const Text('Sign out (debug)'),
               ),

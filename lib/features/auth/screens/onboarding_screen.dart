@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:carekids/features/dashboard/screens/dashboard_screen.dart';
 import 'package:carekids/features/auth/screens/role_selection_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+  final VoidCallback onFinished;
+  final VoidCallback? onBack; // 🌟 เพิ่มตัวแปรรับฟังก์ชัน Callback ย้อนกลับ
+
+  const OnboardingScreen({
+    super.key,
+    required this.onFinished,
+    this.onBack, // 🌟 ใส่ใน constructor
+  });
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -13,9 +19,6 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-
-  // 🌟 จุดแก้ที่ 1: เพิ่มตัวแปรเช็กสถานะการสิ้นสุดออนบอร์ดดิ้ง เพื่อเอาไปคุมสิทธิ์การกดย้อนกลับแบบไดนามิก
-  bool _onboardingFinished = false;
 
   // Step 1 - Family Name
   final _familyNameController = TextEditingController();
@@ -43,26 +46,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() => _currentPage--);
   }
 
-  // STEP 1 -> สร้าง family + profile (role: admin) ครั้งแรกที่กด "Next"
+  // STEP 1 -> สร้าง family + profile (role: admin) ครั้งแรก หรืออัปเดตกรณีเคยกด Next ไปแล้วกดย้อนกลับมา
   Future<void> _createFamilyAndProfile() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser!;
-    final meta = user.userMetadata ?? {};
 
-    final family = await supabase
-        .from('families')
-        .insert({'name': '${_familyNameController.text.trim()}\'s Family'})
+    // 🌟 เช็กก่อนว่าเคยมี profile อยู่ในระบบรึยัง ป้องกันปัญหา Unique Constraint พัง
+    final existingProfile = await supabase
+        .from('profiles')
         .select()
-        .single();
+        .eq('id', user.id)
+        .maybeSingle();
 
-    await supabase.from('profiles').insert({
-      'id': user.id,
-      'family_id': family['id'],
-      'first_name': meta['first_name'] ?? '',
-      'last_name': meta['last_name'] ?? '',
-      'role': 'admin',
-      'onboarding_complete': false,
-    });
+    if (existingProfile == null) {
+      final meta = user.userMetadata ?? {};
+      final family = await supabase
+          .from('families')
+          .insert({'name': '${_familyNameController.text.trim()}\'s Family'})
+          .select()
+          .single();
+
+      await supabase.from('profiles').insert({
+        'id': user.id,
+        'family_id': family['id'],
+        'first_name': meta['first_name'] ?? '',
+        'last_name': meta['last_name'] ?? '',
+        'role': 'admin',
+        'onboarding_complete': false,
+      });
+    } else {
+      // 🌟 ถ้าผู้ใช้กด Back ย้อนกลับมาแก้ชื่อแฟมิลี่ ให้เปลี่ยนเป็นสั่งอัปเดตชื่อเดิมแทน ไม่ Insert ซ้ำ
+      await supabase
+          .from('families')
+          .update({'name': '${_familyNameController.text.trim()}\'s Family'})
+          .eq('id', existingProfile['family_id']);
+    }
   }
 
   Future<void> _handleStep1Next() async {
@@ -124,14 +142,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           .update({'onboarding_complete': true})
           .eq('id', userId);
 
-      // จุดแก้ที่ 2: สลับสเตทเป็น true เพื่อล็อกไม่ให้กดย้อนกลับระบบหลังวาร์ปไปหน้า Dashboard แล้ว
       if (mounted) {
-        setState(() => _onboardingFinished = true);
-
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-          (route) => false,
-        );
+        widget.onFinished();
       }
     } catch (e) {
       if (mounted) {
@@ -155,14 +167,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           .update({'onboarding_complete': true})
           .eq('id', userId);
 
-      // จุดแก้ที่ 3: สลับสเตทฝั่ง Skip เป็น true เพื่อทำการล็อกไม่ให้กด Back ย้อนกลับมา
       if (mounted) {
-        setState(() => _onboardingFinished = true);
-
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-          (route) => false,
-        );
+        widget.onFinished();
       }
     } catch (e) {
       if (mounted) {
@@ -177,47 +183,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // จุดแก้ที่ 4: นำ PopScope มาห่อหุ้ม Scaffold หลัก เพื่อตรวจสอบสิทธิ์การกดย้อนกลับแบบไดนามิกตามสเตทปัจจุบัน
-    return PopScope(
-      canPop: !_onboardingFinished, // ถ้าออนบอร์ดดิ่งเสร็จแล้ว (true) canPop จะเป็น false ทันที บล็อกไม่ให้กดย้อนกลับ
-      child: Scaffold(
-        body: SafeArea(
-          child: Column(
-            children: [
-              // Progress indicator
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Row(
-                  children: List.generate(3, (index) {
-                    return Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: index <= _currentPage
-                              ? Colors.blue
-                              : Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Progress indicator
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                children: List.generate(3, (index) {
+                  return Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: index <= _currentPage
+                            ? Colors.blue
+                            : Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                    );
-                  }),
-                ),
+                    ),
+                  );
+                }),
               ),
-  
-              Expanded(
-                child: PageView(
-                  controller: _pageController,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    _buildStep1(),
-                    _buildStep2(),
-                    _buildStep3(),
-                  ],
-                ),
+            ),
+
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  _buildStep1(),
+                  _buildStep2(),
+                  _buildStep3(),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -250,12 +252,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                onPressed: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (context) => const RoleSelectionScreen(),
-                      ),
-                    );
+                  onPressed: () {
+                    // 🌟 เปลี่ยนมาเรียกใช้ onBack เคลียร์โรลฝั่ง AuthGate แทนการทำ Navigator.pushReplacement
+                    if (widget.onBack != null) {
+                      widget.onBack!();
+                    }
                   },
                   child: const Text('Back'),
                 ),
@@ -317,7 +318,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: ChoiceChip(
                   label: const Text('Male'),
                   selected: _selectedGender == 'male',
-                  onSelected: (_) => setState(() => _selectedGender = 'male'),
+                  onSelected: (_) => setState(() => _selectedGender == 'male'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -325,7 +326,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: ChoiceChip(
                   label: const Text('Female'),
                   selected: _selectedGender == 'female',
-                  onSelected: (_) => setState(() => _selectedGender = 'female'),
+                  onSelected: (_) => setState(() => _selectedGender == 'female'),
                 ),
               ),
             ],
