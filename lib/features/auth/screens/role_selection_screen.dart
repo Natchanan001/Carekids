@@ -28,7 +28,7 @@ class RoleSelectionScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.pushReplacement(
+                  onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const OnboardingScreen()),
                   ),
@@ -44,7 +44,7 @@ class RoleSelectionScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: () => Navigator.pushReplacement(
+                  onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const CaregiverJoinScreen()),
                   ),
