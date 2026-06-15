@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carekids/features/auth/screens/login_screen.dart';
+import 'package:carekids/features/auth/screens/auth_gate.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -32,9 +33,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
         },
       );
 
+      // เมื่อสมัครสำเร็จ ให้เคลียร์หน้าจอแล้วส่งกลับไปหา AuthGate
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Registration successful!')),
+        );
+
+        // ทลาย Stack ทิ้งให้หมดแล้ววาร์ปไปเริ่มนับหนึ่งใหม่ที่ AuthGate
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuthGate()),
+          (route) => false,
         );
       }
     } catch (e) {
