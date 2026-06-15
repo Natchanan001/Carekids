@@ -139,13 +139,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
       final familyId = profile['family_id'];
 
-      // 🌟 นำข้อมูลเด็กมาบันทึกลงตรงนี้! ป้องกันปัญหากด Skip แล้วข้อมูลเด็กหาย
-      await supabase.from('children').insert({
-        'family_id': familyId,
-        'name': _childNameController.text.trim(),
-        'birthdate': _selectedBirthdate!.toIso8601String().split('T')[0],
+// 🌟 นำข้อมูลเด็กมาบันทึกลงตรงนี้! ป้องกันปัญหากด Skip แล้วข้อมูลเด็กหาย
+      final childResponse = await supabase
+          .from('children')
+          .insert({
+            'family_id': familyId,
+            'name': _childNameController.text.trim(),
+            'birthdate': _selectedBirthdate!.toIso8601String().split('T')[0],
+            'weight_kg': double.parse(_weightController.text),
+            'gender': _selectedGender,
+          })
+          .select()
+          .single();
+
+      // 🌟 บันทึก weight log ครั้งแรก ให้ history ต่อเนื่องกับ weight_logs
+      await supabase.from('weight_logs').insert({
+        'child_id': childResponse['id'],
         'weight_kg': double.parse(_weightController.text),
-        'gender': _selectedGender,
+        'recorded_by': userId,
       });
 
       // อัปเดตสถานะว่าจบกระบวนการแล้ว
