@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:carekids/features/dashboard/screens/dashboard_screen.dart'; 
 
 class CaregiverJoinScreen extends StatefulWidget {
   const CaregiverJoinScreen({super.key});
@@ -11,6 +12,9 @@ class CaregiverJoinScreen extends StatefulWidget {
 class _CaregiverJoinScreenState extends State<CaregiverJoinScreen> {
   final _codeController = TextEditingController();
   bool _isLoading = false;
+
+  // จุดแก้ที่ 2: เพิ่มตัวแปรสเตทคุมการกดย้อนกลับแบบไดนามิกหลังจากทำงานสำเร็จ
+  bool _joinFinished = false;
 
   Future<void> _join() async {
     setState(() => _isLoading = true);
@@ -46,7 +50,15 @@ class _CaregiverJoinScreenState extends State<CaregiverJoinScreen> {
         'onboarding_complete': true,
       });
 
-      // AuthGate จะ detect profile แล้วเด้งไป Dashboard เอง
+      // จุดแก้ที่ 3: สับสวิตช์ล็อกปุ่ม Back และใช้ pushAndRemoveUntil วาร์ปเคลียร์ Stack ส่งไปหน้า Dashboard ตรง ๆ
+      if (mounted) {
+        setState(() => _joinFinished = true);
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          (route) => false,
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -54,40 +66,46 @@ class _CaregiverJoinScreenState extends State<CaregiverJoinScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Join Family')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const Text('Enter the invitation code you received from a parent',
-                style: TextStyle(fontSize: 16, color: Colors.grey)),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _codeController,
-              decoration: const InputDecoration(
-                labelText: 'Invitation Code',
-                border: OutlineInputBorder(),
+    // จุดแก้ที่ 4: นำ PopScope มาห่อหุ้ม Scaffold เพื่อคุมสิทธิ์ปุ่ม Back ตามสเตท
+    return PopScope(
+      canPop: !_joinFinished, // ล็อกทันทีเมื่อสลับสเตทเป็น true หลังจากกดเข้าร่วมครอบครัวสำเร็จ
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Join Family')),
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              const Text('Enter the invitation code you received from a parent',
+                  style: TextStyle(fontSize: 16, color: Colors.grey)),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _codeController,
+                decoration: const InputDecoration(
+                  labelText: 'Invitation Code',
+                  border: OutlineInputBorder(),
+                ),
+                textCapitalization: TextCapitalization.characters,
               ),
-              textCapitalization: TextCapitalization.characters,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _join,
-                child: _isLoading
-                    ? const CircularProgressIndicator()
-                    : const Text('Join Family'),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _join,
+                  child: _isLoading
+                      ? const CircularProgressIndicator()
+                      : const Text('Join Family'),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
