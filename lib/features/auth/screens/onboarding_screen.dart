@@ -13,6 +13,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
+  // 🌟 จุดแก้ที่ 1: เพิ่มตัวแปรเช็กสถานะการสิ้นสุดออนบอร์ดดิ้ง เพื่อเอาไปคุมสิทธิ์การกดย้อนกลับแบบไดนามิก
+  bool _onboardingFinished = false;
+
   // Step 1 - Family Name
   final _familyNameController = TextEditingController();
 
@@ -120,8 +123,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           .update({'onboarding_complete': true})
           .eq('id', userId);
 
-      // Navigate ไป Dashboard ตรงๆ (AuthGate จะไม่ rebuild เอง)
+      // จุดแก้ที่ 2: สลับสเตทเป็น true เพื่อล็อกไม่ให้กดย้อนกลับระบบหลังวาร์ปไปหน้า Dashboard แล้ว
       if (mounted) {
+        setState(() => _onboardingFinished = true);
+
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const DashboardScreen()),
           (route) => false,
@@ -149,7 +154,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           .update({'onboarding_complete': true})
           .eq('id', userId);
 
+      // จุดแก้ที่ 3: สลับสเตทฝั่ง Skip เป็น true เพื่อทำการล็อกไม่ให้กด Back ย้อนกลับมา
       if (mounted) {
+        setState(() => _onboardingFinished = true);
+
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const DashboardScreen()),
           (route) => false,
@@ -168,43 +176,47 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Progress indicator
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Row(
-                children: List.generate(3, (index) {
-                  return Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: index <= _currentPage
-                            ? Colors.blue
-                            : Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2),
+    // จุดแก้ที่ 4: นำ PopScope มาห่อหุ้ม Scaffold หลัก เพื่อตรวจสอบสิทธิ์การกดย้อนกลับแบบไดนามิกตามสเตทปัจจุบัน
+    return PopScope(
+      canPop: !_onboardingFinished, // ถ้าออนบอร์ดดิ่งเสร็จแล้ว (true) canPop จะเป็น false ทันที บล็อกไม่ให้กดย้อนกลับ
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Progress indicator
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: List.generate(3, (index) {
+                    return Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: index <= _currentPage
+                              ? Colors.blue
+                              : Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
-                    ),
-                  );
-                }),
+                    );
+                  }),
+                ),
               ),
-            ),
-
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _buildStep1(),
-                  _buildStep2(),
-                  _buildStep3(),
-                ],
+  
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildStep1(),
+                    _buildStep2(),
+                    _buildStep3(),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
