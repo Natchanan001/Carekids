@@ -4,12 +4,12 @@ import 'package:carekids/features/auth/screens/role_selection_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onFinished;
-  final VoidCallback? onBack; // 🌟 เพิ่มตัวแปรรับฟังก์ชัน Callback ย้อนกลับ
+  final VoidCallback? onBack;
 
   const OnboardingScreen({
     super.key,
     required this.onFinished,
-    this.onBack, // 🌟 ใส่ใน constructor
+    this.onBack, 
   });
 
   @override
@@ -27,7 +27,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _childNameController = TextEditingController();
   final _weightController = TextEditingController();
   DateTime? _selectedBirthdate;
-  String? _selectedGender; // 'male' or 'female'
+  String? _selectedGender; 
   bool _isLoading = false;
 
   void _nextPage() {
@@ -46,12 +46,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() => _currentPage--);
   }
 
-  // STEP 1 -> สร้าง family + profile (role: admin) ครั้งแรก หรืออัปเดตกรณีเคยกด Next ไปแล้วกดย้อนกลับมา
+  // STEP 1 
   Future<void> _createFamilyAndProfile() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser!;
 
-    // 🌟 เช็กก่อนว่าเคยมี profile อยู่ในระบบรึยัง ป้องกันปัญหา Unique Constraint พัง
     final existingProfile = await supabase
         .from('profiles')
         .select()
@@ -75,7 +74,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         'onboarding_complete': false,
       });
     } else {
-      // 🌟 ถ้าผู้ใช้กด Back ย้อนกลับมาแก้ชื่อแฟมิลี่ ให้เปลี่ยนเป็นสั่งอัปเดตชื่อเดิมแทน ไม่ Insert ซ้ำ
       await supabase
           .from('families')
           .update({'name': '${_familyNameController.text.trim()}\'s Family'})
@@ -93,7 +91,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An error occurred.: $e')),
+          SnackBar(content: Text('An error occurred: $e')),
         );
       }
     } finally {
@@ -101,18 +99,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  // STEP 3 -> เพิ่มข้อมูลเด็ก + mark onboarding complete
-  Future<void> _saveAndFinish() async {
+  // 🌟 เพิ่มฟังก์ชันสำหรับตรวจสอบหน้า 2 ก่อนกดไปหน้า 3
+  void _handleStep2Next() {
+    // 1. ดักกรอกไม่ครบ
     if (_childNameController.text.isEmpty ||
         _weightController.text.isEmpty ||
         _selectedBirthdate == null ||
         _selectedGender == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all child information')),
+        const SnackBar(content: Text('Please fill in all child information 👶')),
       );
       return;
     }
 
+    // 2. ดักน้ำหนักมั่ว (เผื่อพิมพ์ตัวหนังสือมา)
+    if (double.tryParse(_weightController.text) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Weight must be a number (e.g., 15.5) ⚖️')),
+      );
+      return;
+    }
+
+    _nextPage();
+  }
+
+  // 🌟 ยุบรวมฟังก์ชันจบ Onboarding (ทั้งตอนรับ Invite และตอนข้าม) มาไว้ที่เดียวกัน
+  Future<void> _finishOnboarding() async {
     setState(() => _isLoading = true);
 
     try {
@@ -127,7 +139,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
       final familyId = profile['family_id'];
 
-      // Add child information
+      // 🌟 นำข้อมูลเด็กมาบันทึกลงตรงนี้! ป้องกันปัญหากด Skip แล้วข้อมูลเด็กหาย
       await supabase.from('children').insert({
         'family_id': familyId,
         'name': _childNameController.text.trim(),
@@ -136,44 +148,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         'gender': _selectedGender,
       });
 
-      // mark onboarding complete by updating profile
+      // อัปเดตสถานะว่าจบกระบวนการแล้ว
       await supabase
           .from('profiles')
           .update({'onboarding_complete': true})
           .eq('id', userId);
 
       if (mounted) {
-        widget.onFinished();
+        widget.onFinished(); // ปล่อยเข้า Dashboard
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An error occurred.: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _handleSkip() async {
-    setState(() => _isLoading = true);
-    try {
-      final supabase = Supabase.instance.client;
-      final userId = supabase.auth.currentUser!.id;
-
-      await supabase
-          .from('profiles')
-          .update({'onboarding_complete': true})
-          .eq('id', userId);
-
-      if (mounted) {
-        widget.onFinished();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An error occurred.: $e')),
+          SnackBar(content: Text('An error occurred: $e')),
         );
       }
     } finally {
@@ -187,7 +174,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Progress indicator
             Padding(
               padding: const EdgeInsets.all(24),
               child: Row(
@@ -207,7 +193,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 }),
               ),
             ),
-
             Expanded(
               child: PageView(
                 controller: _pageController,
@@ -225,7 +210,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // Step 1: Welcome + Set Family Name
+  // Step 1
   Widget _buildStep1() {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -253,7 +238,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () {
-                    // 🌟 เปลี่ยนมาเรียกใช้ onBack เคลียร์โรลฝั่ง AuthGate แทนการทำ Navigator.pushReplacement
                     if (widget.onBack != null) {
                       widget.onBack!();
                     }
@@ -286,7 +270,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // Step 2: Add Child Information
+  // Step 2
   Widget _buildStep2() {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -309,24 +293,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Gender selector
           const Text('Gender', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: ChoiceChip(
+                  showCheckmark: true, // 🌟 เพิ่มติ๊กถูกให้ชัดเจน
+                  selectedColor: Colors.blue.shade100, // 🌟 ใส่สีตอนเลือก
                   label: const Text('Male'),
                   selected: _selectedGender == 'male',
-                  onSelected: (_) => setState(() => _selectedGender == 'male'),
+                  onSelected: (selected) {
+                    // 🌟 ดักเช็กให้รับค่าเมื่อถูกจิ้มจริงๆ เท่านั้น
+                    if (selected) setState(() => _selectedGender = 'male');
+                  },
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: ChoiceChip(
+                  showCheckmark: true,
+                  selectedColor: Colors.pink.shade100,
                   label: const Text('Female'),
                   selected: _selectedGender == 'female',
-                  onSelected: (_) => setState(() => _selectedGender == 'female'),
+                  onSelected: (selected) {
+                    if (selected) setState(() => _selectedGender = 'female');
+                  },
                 ),
               ),
             ],
@@ -339,7 +331,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               labelText: 'Weight (kg)',
               border: OutlineInputBorder(),
             ),
-            keyboardType: TextInputType.number,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
           ),
           const SizedBox(height: 16),
           OutlinedButton(
@@ -370,7 +362,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: _nextPage,
+                  // 🌟 เปลี่ยนมาใช้ฟังก์ชันตรวจหน้าด่าน _handleStep2Next ที่เราสร้างใหม่
+                  onPressed: _handleStep2Next,
                   child: const Text('Next'),
                 ),
               ),
@@ -381,7 +374,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // Step 3: Invite Caregivers (Skip Option)
+  // Step 3
   Widget _buildStep3() {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -454,7 +447,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _saveAndFinish,
+                  // 🌟 ให้โยงไปที่ _finishOnboarding
+                  onPressed: _isLoading ? null : _finishOnboarding,
                   child: _isLoading
                       ? const SizedBox(
                           height: 20,
@@ -470,7 +464,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ],
           ),
           TextButton(
-            onPressed: _isLoading ? null : _handleSkip,
+            // 🌟 ให้โยงไปที่ _finishOnboarding เหมือนกันเป๊ะ เพราะต้องเซฟเด็กลง DB ด้วยจ้า!
+            onPressed: _isLoading ? null : _finishOnboarding,
             child: const Text('Skip for Now, Invite Later'),
           ),
         ],
