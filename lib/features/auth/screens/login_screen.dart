@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carekids/features/auth/screens/register_screen.dart';
+import 'package:carekids/features/auth/screens/auth_gate.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,7 +22,14 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      // AuthGate จะ detect session เองและเด้งไป Dashboard อัตโนมัติ
+      
+      //  จุดแก้ที่ 2: หลังจาก signInWithPassword สำเร็จ ให้ใช้ pushAndRemoveUntil วาร์ปเคลียร์สแต็กกลับไปหา AuthGate โดยตรง
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuthGate()),
+          (route) => false,
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
