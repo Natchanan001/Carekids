@@ -14,16 +14,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   String? _role;
   String? _familyId;
+  String? _firstName; // 🌟 เก็บชื่อเจ้าของบัญชี ใช้ในไอคอนมุมขวาล่าง
   List<ChildProfile> _children = [];
   int _selectedIndex = 0;
+  bool _cardVisible = false;
+
+  late DateTime _todayDateOnly;
+  DateTime? _selectedCalendarDate; // null จนกว่าจะรู้วันนี้
+
+  // 🌟 mock event ไว้ก่อน รอเชื่อมฟีเจอร์ปฏิทิน/นัดหมายจริง (key = offset วันจากวันนี้)
+  final Map<int, String> _mockCalendarEvents = {
+    1: 'Vaccine',
+    3: "Doctor's Appointment",
+  };
+
+  static const int _daysBefore = 7;
+  static const int _daysAfter = 30;
+  static const double _calendarItemExtent = 82; // width 72 + margin 10
+
+  late final ScrollController _calendarScrollController;
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _todayDateOnly = DateTime(now.year, now.month, now.day);
+    _selectedCalendarDate = _todayDateOnly;
+
+    // 🌟 เริ่มเลื่อน calendar ให้โฟกัสที่ "วันนี้" พอดี แต่เลื่อนย้อนกลับไปดูวันก่อนได้
+    _calendarScrollController = ScrollController(
+      initialScrollOffset: _daysBefore * _calendarItemExtent,
+    );
+
     _loadData();
   }
 
+  @override
+  void dispose() {
+    _calendarScrollController.dispose();
+    super.dispose();
+  }
+
   bool get _isAdmin => _role == 'admin';
+
+  bool _isSameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
@@ -33,12 +68,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final profile = await supabase
           .from('profiles')
-          .select('role, family_id')
+          .select('role, family_id, first_name, last_name')
           .eq('id', userId)
           .single();
 
       _role = profile['role'];
       _familyId = profile['family_id'];
+      _firstName = profile['first_name'];
 
       final childrenData = await supabase
           .from('children')
@@ -143,121 +179,248 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadData();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('CareKids Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.red),
-            tooltip: 'Sign Out (Debug)',
-            onPressed: () async {
-              await Supabase.instance.client.auth.signOut();
-              // AuthGate จะ detect แล้วเด้งไป LoginScreen ให้เองอัตโนมัติ
-            },
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _children.isEmpty
-              ? _buildEmptyState()
-              : _buildContent(),
+  void _showComingSoon(String featureName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$featureName is coming soon 🚧')),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FB),
+      drawer: _buildDrawer(),
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _children.isEmpty
+                ? _buildEmptyState()
+                : _buildContent(),
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Drawer _buildDrawer() {
+    return Drawer(
+      child: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('No child profiles yet 👶',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Text(
-              _isAdmin
-                  ? 'Add your first child profile to get started'
-                  : 'Ask the family admin to add a child profile',
-              style: const TextStyle(color: Colors.grey),
-              textAlign: TextAlign.center,
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('Menu',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             ),
-            if (_isAdmin) ...[
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _goToAddChild,
-                icon: const Icon(Icons.add),
-                label: const Text('Add Child'),
-              ),
-            ],
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Sign Out (Debug)'),
+              onTap: () async {
+                Navigator.pop(context); // ปิด drawer ก่อน
+                await Supabase.instance.client.auth.signOut();
+                // AuthGate จะ detect แล้วเด้งไป LoginScreen ให้เองอัตโนมัติ
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildContent() {
-    final selectedChild = _children[_selectedIndex];
-
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          SizedBox(
-            height: 88,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (int i = 0; i < _children.length; i++)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: _buildChildChip(_children[i], i),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8),
+                  ],
+                ),
+                child: Row(
+                  children: const [
+                    Text('Care',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2F80ED))),
+                    Text('Kids',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFEB5C8C))),
+                  ],
+                ),
+              ),
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
                   ),
-                if (_isAdmin)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: _buildAddChildChip(),
-                  ),
-              ],
+                ),
+              ),
+            ],
+          ),
+          Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () => Scaffold.of(context).openDrawer(),
             ),
           ),
-          const SizedBox(height: 24),
-          _buildChildCard(selectedChild),
         ],
       ),
     );
   }
 
-  Widget _buildChildChip(ChildProfile child, int index) {
-    final isSelected = index == _selectedIndex;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: isSelected
-                ? Colors.blue
-                : (child.gender == 'female'
-                    ? Colors.pink.shade100
-                    : Colors.blue.shade100),
-            child: Text(
-              child.name.isNotEmpty ? child.name[0].toUpperCase() : '?',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: isSelected ? Colors.white : Colors.black87,
+  Widget _buildEmptyState() {
+    return Column(
+      children: [
+        _buildHeader(),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('No child profiles yet 👶',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isAdmin
+                        ? 'Add your first child profile to get started'
+                        : 'Ask the family admin to add a child profile',
+                    style: const TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (_isAdmin) ...[
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _goToAddChild,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Child'),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 4),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          _buildHeader(),
+          const SizedBox(height: 16),
+          _buildAvatarRow(),
+
+          if (_cardVisible && _children.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _buildChildCard(_children[_selectedIndex]),
+            ),
+          ],
+
+          const SizedBox(height: 24),
+          _buildQuickActions(),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _buildNextReminder(),
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _buildCalendar(),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarRow() {
+    return SizedBox(
+      height: 90,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        children: [
+          for (int i = 0; i < _children.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: _buildChildAvatar(_children[i], i),
+            ),
+          if (_isAdmin) _buildAddChildAvatar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChildAvatar(ChildProfile child, int index) {
+    final isSelected = index == _selectedIndex;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (_selectedIndex == index && _cardVisible) {
+            _cardVisible = false;
+          } else {
+            _selectedIndex = index;
+            _cardVisible = true;
+          }
+        });
+      },
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? const Color(0xFF2F80ED) : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: CircleAvatar(
+              radius: 26,
+              backgroundColor: child.gender == 'female'
+                  ? Colors.pink.shade100
+                  : Colors.blue.shade100,
+              child: Text(
+                child.name.isNotEmpty ? child.name[0].toUpperCase() : '?',
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
           Text(
             child.name,
             style: TextStyle(
               fontSize: 12,
+              color: isSelected ? const Color(0xFF2F80ED) : Colors.black87,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           ),
@@ -266,7 +429,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildAddChildChip() {
+  Widget _buildAddChildAvatar() {
     return GestureDetector(
       onTap: _goToAddChild,
       child: Column(
@@ -276,7 +439,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             backgroundColor: Colors.grey.shade200,
             child: const Icon(Icons.add, color: Colors.grey),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           const Text('Add', style: TextStyle(fontSize: 12)),
         ],
       ),
@@ -359,4 +522,371 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  Widget _buildQuickActions() {
+    final actions = [
+      _QuickAction(
+        title: 'Calculator\nDose',
+        icon: Icons.medication_liquid,
+        gradient: const [Color(0xFFB7F0D8), Color(0xFFEAFBF2)],
+        iconColor: const Color(0xFF1F9D6B),
+      ),
+      _QuickAction(
+        title: 'Medication\nLog',
+        icon: Icons.assignment_outlined,
+        gradient: const [Color(0xFFBFDBFF), Color(0xFFEAF3FF)],
+        iconColor: const Color(0xFF2F6FE0),
+      ),
+      _QuickAction(
+        title: 'Symptom\nLog',
+        icon: Icons.sick_outlined,
+        gradient: const [Color(0xFFFFD9A0), Color(0xFFFFF3E0)],
+        iconColor: const Color(0xFFE08A1F),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20),
+          child: Text('Quick Action',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 170,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              for (final action in actions)
+                Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: _buildQuickActionCard(action),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionCard(_QuickAction action) {
+    return Container(
+      width: 150,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: action.gradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -10,
+            bottom: -10,
+            child: Icon(action.icon, size: 80, color: Colors.white.withOpacity(0.4)),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                action.title,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: action.iconColor,
+                ),
+              ),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: () => _showComingSoon(action.title.replaceAll('\n', ' ')),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black87,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                child: const Text('Start Now', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNextReminder() {
+    final reminders = [
+      {
+        'time': '12:30 AM',
+        'name': 'Paracetamol',
+        'dose': '3.5 ML',
+        'icon': Icons.wb_sunny_outlined,
+        'color': Colors.orange,
+      },
+      {
+        'time': '7:00 PM',
+        'name': 'Paracetamol',
+        'dose': '3.5 ML',
+        'icon': Icons.nightlight_round,
+        'color': Colors.indigo,
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: const [
+            Text('Next Reminder',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            SizedBox(width: 6),
+            Icon(Icons.alarm, size: 20, color: Colors.black54),
+          ],
+        ),
+        const SizedBox(height: 12),
+        for (final r in reminders)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: (r['color'] as Color).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(r['icon'] as IconData, color: r['color'] as Color),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${r['time']} | ${r['name']}',
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(r['dose'] as String,
+                            style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.pink.shade50,
+                    child: const Icon(Icons.medication, color: Colors.pink, size: 18),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        Text(
+          '* Sample reminder — actual medication schedule arrives with Feature 002',
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalendar() {
+    const weekdayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final totalDays = _daysBefore + _daysAfter + 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Calendar',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 100, // 🌟 เพิ่มความสูงแก้ overflow
+          child: ListView.builder(
+            controller: _calendarScrollController,
+            scrollDirection: Axis.horizontal,
+            itemCount: totalDays,
+            itemExtent: _calendarItemExtent, // 🌟 ทำให้คำนวณ scroll offset แม่นยำ
+            itemBuilder: (context, index) {
+              final offset = index - _daysBefore; // ลบ/บวกจากวันนี้
+              final date = _todayDateOnly.add(Duration(days: offset));
+              final isSelected = _isSameDate(date, _selectedCalendarDate!);
+              final isToday = offset == 0;
+              final eventLabel = _mockCalendarEvents[offset];
+              final hasEvent = eventLabel != null;
+
+              Color backgroundColor;
+              Color textColor;
+              Color subTextColor;
+
+              if (isSelected) {
+                backgroundColor = const Color(0xFF2F80ED);
+                textColor = Colors.white;
+                subTextColor = Colors.white70;
+              } else if (hasEvent) {
+                // 🌟 วันที่มีนัด ใช้สีส้มอ่อนแทนสีขาว ให้สังเกตง่าย
+                backgroundColor = Colors.orange.shade50;
+                textColor = Colors.black87;
+                subTextColor = Colors.orange.shade800;
+              } else {
+                backgroundColor = Colors.white;
+                textColor = Colors.black87;
+                subTextColor = Colors.grey;
+              }
+
+              return GestureDetector(
+                onTap: () => setState(() => _selectedCalendarDate = date),
+                child: Container(
+                  width: 72,
+                  margin: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: backgroundColor,
+                    borderRadius: BorderRadius.circular(14),
+                    border: hasEvent && !isSelected
+                        ? Border.all(color: Colors.orange.shade200)
+                        : null,
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        weekdayShort[date.weekday - 1],
+                        style: TextStyle(fontSize: 12, color: subTextColor),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${date.day}',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        isToday ? 'Today' : (eventLabel ?? 'No item'),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 10, color: subTextColor),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildCalendarDetailPanel(),
+      ],
+    );
+  }
+
+  Widget _buildCalendarDetailPanel() {
+    final offset = _selectedCalendarDate!.difference(_todayDateOnly).inDays;
+    final eventLabel = _mockCalendarEvents[offset];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)],
+      ),
+      child: Row(
+        children: [
+          Icon(
+            eventLabel != null ? Icons.event_available : Icons.event_busy,
+            color: eventLabel != null ? const Color(0xFF2F80ED) : Colors.grey,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              eventLabel != null
+                  ? '$eventLabel on ${_selectedCalendarDate!.day}/${_selectedCalendarDate!.month}'
+                  : 'No appointments on ${_selectedCalendarDate!.day}/${_selectedCalendarDate!.month}',
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🌟 ไอคอนมุมขวาล่าง = โปรไฟล์เจ้าของบัญชี ไม่ใช่โปรไฟล์เด็ก
+  Widget _buildBottomNav() {
+    final initial = (_firstName != null && _firstName!.isNotEmpty)
+        ? _firstName![0].toUpperCase()
+        : null;
+
+    return BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      currentIndex: 0,
+      selectedItemColor: const Color(0xFF2F80ED),
+      unselectedItemColor: Colors.grey,
+      onTap: (index) {
+        if (index == 0) return; // Home คือหน้านี้อยู่แล้ว
+        if (index == 3) {
+          _showComingSoon('Account settings');
+          return;
+        }
+        _showComingSoon('This section');
+      },
+      items: [
+        const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today), label: 'Schedule'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.location_on_outlined), label: 'Hospital'),
+        BottomNavigationBarItem(
+          icon: CircleAvatar(
+            radius: 12,
+            backgroundColor: Colors.purple.shade100,
+            child: initial != null
+                ? Text(
+                    initial,
+                    style: const TextStyle(fontSize: 11, color: Colors.black87),
+                  )
+                : const Icon(Icons.person, size: 14, color: Colors.black54),
+          ),
+          label: 'Account',
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickAction {
+  final String title;
+  final IconData icon;
+  final List<Color> gradient;
+  final Color iconColor;
+
+  _QuickAction({
+    required this.title,
+    required this.icon,
+    required this.gradient,
+    required this.iconColor,
+  });
 }
