@@ -48,10 +48,12 @@ class _AddAccountRegisterScreenState extends State<AddAccountRegisterScreen> {
         },
       );
       // 🌟 AuthGate จะบันทึกบัญชีใหม่นี้เข้า saved accounts ให้เองอัตโนมัติ
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

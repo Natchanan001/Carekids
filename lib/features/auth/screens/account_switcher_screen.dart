@@ -33,22 +33,25 @@ class _AccountSwitcherScreenState extends State<AccountSwitcherScreen> {
 
   Future<void> _switchTo(SavedAccount account) async {
     if (account.userId == _currentUserId) {
-      Navigator.pop(context); // อยู่บัญชีนี้แล้ว แค่กลับไป
+      Navigator.of(context).popUntil((route) => route.isFirst);
       return;
     }
 
     setState(() => _isSwitching = true);
     try {
-      // 🌟 setSession ใช้ refresh token สลับ session ทันที ไม่ต้องพิมพ์รหัสซ้ำ
       await Supabase.instance.client.auth.setSession(account.refreshToken);
-      // AuthGate ฟัง onAuthStateChange อยู่แล้ว จะพาไปหน้าที่ถูกต้องของบัญชีนั้นเอง
-      if (mounted) Navigator.pop(context);
+      // 🌟 เด้งกลับ root ทีเดียว ให้ AuthGate แสดงหน้าที่ถูกต้องของบัญชีใหม่เอง
+      // (Dashboard / Onboarding / Pending / Workspace Selection ตามสถานะจริง)
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
-      // 🌟 refresh token หมดอายุ/ถูก rotate ไปแล้ว -> ลบออกจาก list แนะนำ login ใหม่
       await AccountManager.removeAccount(account.userId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Session expired for ${account.displayName}. Please log in again.')),
+          SnackBar(
+            content: Text(
+              'Session expired for ${account.displayName}. Please log in again.',
+            ),
+          ),
         );
         _loadAccounts();
       }
@@ -77,34 +80,39 @@ class _AccountSwitcherScreenState extends State<AccountSwitcherScreen> {
               children: [
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('Add Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  child: Text(
+                    'Add Account',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.login),
                   title: const Text('Log in to existing account'),
-                  onTap: () async {
+                  onTap: () {
                     Navigator.pop(context); // ปิด sheet
-                    await Navigator.push(
+                    Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const AddAccountLoginScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const AddAccountLoginScreen(),
+                      ),
                     );
-                    if (mounted) Navigator.pop(context); // กลับสู่ AuthGate ให้ rebuild ตามบัญชีใหม่
                   },
                 ),
                 ListTile(
                   leading: const Icon(Icons.person_add),
                   title: const Text('Create new account'),
-                  onTap: () async {
+                  onTap: () {
                     Navigator.pop(context);
-                    await Navigator.push(
+                    Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const AddAccountRegisterScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const AddAccountRegisterScreen(),
+                      ),
                     );
-                    if (mounted) Navigator.pop(context);
                   },
                 ),
-              ],
+              ]
             ),
           ),
         );
