@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carekids/features/auth/screens/login_screen.dart';
-import 'package:carekids/features/auth/screens/auth_gate.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,35 +13,49 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
   Future<void> _register() async {
+    if (_firstNameController.text.isEmpty ||
+        _lastNameController.text.isEmpty ||
+        _emailController.text.isEmpty ||
+        _phoneController.text.isEmpty ||
+        _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all fields')),
+      );
+      return;
+    }
+
+    // 🌟 Phone Number ต้องเป็นตัวเลขเท่านั้น ตาม spec ใหม่
+    final phoneDigitsOnly = RegExp(r'^[0-9]+$');
+    if (!phoneDigitsOnly.hasMatch(_phoneController.text.trim())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Phone number must contain digits only')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final supabase = Supabase.instance.client;
 
-      // 1. Sign up for Authentication
       await supabase.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         data: {
           'first_name': _firstNameController.text.trim(),
           'last_name': _lastNameController.text.trim(),
+          'phone_number': _phoneController.text.trim(),
         },
       );
 
-      // เมื่อสมัครสำเร็จ ให้เคลียร์หน้าจอแล้วส่งกลับไปหา AuthGate
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Registration successful!')),
-        );
-
-        // ทลาย Stack ทิ้งให้หมดแล้ววาร์ปไปเริ่มนับหนึ่งใหม่ที่ AuthGate
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const AuthGate()),
-          (route) => false,
         );
       }
     } catch (e) {
@@ -52,7 +65,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -60,7 +73,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Sign Up')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
@@ -68,15 +81,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
               controller: _firstNameController,
               decoration: const InputDecoration(labelText: 'First Name'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _lastNameController,
               decoration: const InputDecoration(labelText: 'Last Name'),
             ),
+            const SizedBox(height: 12),
             TextField(
               controller: _emailController,
               decoration: const InputDecoration(labelText: 'Email Address'),
               keyboardType: TextInputType.emailAddress,
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneController,
+              decoration: const InputDecoration(labelText: 'Phone Number'),
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
               decoration: const InputDecoration(labelText: 'Password'),
@@ -88,7 +110,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _register,
                 child: _isLoading
-                    ? const CircularProgressIndicator()
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
                     : const Text('Sign Up'),
               ),
             ),

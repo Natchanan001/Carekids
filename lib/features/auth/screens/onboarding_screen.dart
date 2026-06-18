@@ -70,6 +70,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         'family_id': family['id'],
         'first_name': meta['first_name'] ?? '',
         'last_name': meta['last_name'] ?? '',
+        'phone_number': meta['phone_number'] ?? '',
         'role': 'admin',
         'onboarding_complete': false,
       });
