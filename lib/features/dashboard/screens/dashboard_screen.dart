@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carekids/shared/models/child_profile.dart';
 import 'package:carekids/features/children/screens/add_child_screen.dart';
+import 'package:carekids/shared/utils/date_utils.dart';
+import 'package:carekids/shared/utils/mock_events.dart';
+import 'package:carekids/features/dashboard/screens/calendar_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -14,36 +17,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   String? _role;
   String? _familyId;
-  String? _firstName; // 🌟 เก็บชื่อเจ้าของบัญชี ใช้ในไอคอนมุมขวาล่าง
+  String? _firstName;
   List<ChildProfile> _children = [];
   int _selectedIndex = 0;
   bool _cardVisible = false;
 
-  late DateTime _todayDateOnly;
-  DateTime? _selectedCalendarDate; // null จนกว่าจะรู้วันนี้
-
-  // 🌟 mock event ไว้ก่อน รอเชื่อมฟีเจอร์ปฏิทิน/นัดหมายจริง (key = offset วันจากวันนี้)
-  final Map<int, String> _mockCalendarEvents = {
-    1: 'Vaccine',
-    3: "Doctor's Appointment",
-  };
-
-  static const int _daysBefore = 7;
-  static const int _daysAfter = 30;
-  static const double _calendarItemExtent = 82; // width 72 + margin 10
-
+  DateTime? _selectedCalendarDate;
+  late final int _daysInCurrentMonth;
+  static const double _calendarItemExtent = 82;
   late final ScrollController _calendarScrollController;
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _todayDateOnly = DateTime(now.year, now.month, now.day);
-    _selectedCalendarDate = _todayDateOnly;
+    final today = MockEvents.today;
+    _selectedCalendarDate = today;
+    _daysInCurrentMonth = daysInMonth(today.year, today.month);
 
-    // 🌟 เริ่มเลื่อน calendar ให้โฟกัสที่ "วันนี้" พอดี แต่เลื่อนย้อนกลับไปดูวันก่อนได้
+    // 🌟 จำกัด strip ให้อยู่ในเดือนปัจจุบันเท่านั้น (ลด data load) และโฟกัสที่วันนี้
     _calendarScrollController = ScrollController(
-      initialScrollOffset: _daysBefore * _calendarItemExtent,
+      initialScrollOffset: (today.day - 1) * _calendarItemExtent,
     );
 
     _loadData();
@@ -56,9 +49,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   bool get _isAdmin => _role == 'admin';
-
-  bool _isSameDate(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
@@ -217,9 +207,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text('Sign Out (Debug)'),
               onTap: () async {
-                Navigator.pop(context); // ปิด drawer ก่อน
+                Navigator.pop(context);
                 await Supabase.instance.client.auth.signOut();
-                // AuthGate จะ detect แล้วเด้งไป LoginScreen ให้เองอัตโนมัติ
               },
             ),
           ],
@@ -705,29 +694,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // 🌟 Calendar strip: จำกัดเฉพาะเดือนปัจจุบัน + ไอคอนเปิดปฏิทินเต็มรูปแบบ
   Widget _buildCalendar() {
-    const weekdayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final totalDays = _daysBefore + _daysAfter + 1;
+    final today = MockEvents.today;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Calendar',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Calendar',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            IconButton(
+              icon: const Icon(Icons.calendar_month, color: Color(0xFF2F80ED)),
+              tooltip: 'Full calendar',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => CalendarScreen()),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         SizedBox(
-          height: 100, // 🌟 เพิ่มความสูงแก้ overflow
+          height: 100,
           child: ListView.builder(
             controller: _calendarScrollController,
             scrollDirection: Axis.horizontal,
-            itemCount: totalDays,
-            itemExtent: _calendarItemExtent, // 🌟 ทำให้คำนวณ scroll offset แม่นยำ
+            itemCount: _daysInCurrentMonth,
+            itemExtent: _calendarItemExtent,
             itemBuilder: (context, index) {
-              final offset = index - _daysBefore; // ลบ/บวกจากวันนี้
-              final date = _todayDateOnly.add(Duration(days: offset));
-              final isSelected = _isSameDate(date, _selectedCalendarDate!);
-              final isToday = offset == 0;
-              final eventLabel = _mockCalendarEvents[offset];
+              final date = DateTime(today.year, today.month, index + 1);
+              final isSelected = isSameDate(date, _selectedCalendarDate!);
+              final isToday = isSameDate(date, today);
+              final eventLabel = MockEvents.eventFor(date);
               final hasEvent = eventLabel != null;
 
               Color backgroundColor;
@@ -739,7 +740,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 textColor = Colors.white;
                 subTextColor = Colors.white70;
               } else if (hasEvent) {
-                // 🌟 วันที่มีนัด ใช้สีส้มอ่อนแทนสีขาว ให้สังเกตง่าย
                 backgroundColor = Colors.orange.shade50;
                 textColor = Colors.black87;
                 subTextColor = Colors.orange.shade800;
@@ -769,7 +769,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        weekdayShort[date.weekday - 1],
+                        weekdayShortNames[date.weekday - 1],
                         style: TextStyle(fontSize: 12, color: subTextColor),
                       ),
                       const SizedBox(height: 3),
@@ -803,8 +803,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildCalendarDetailPanel() {
-    final offset = _selectedCalendarDate!.difference(_todayDateOnly).inDays;
-    final eventLabel = _mockCalendarEvents[offset];
+    final eventLabel = MockEvents.eventFor(_selectedCalendarDate!);
 
     return Container(
       width: double.infinity,
@@ -834,7 +833,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // 🌟 ไอคอนมุมขวาล่าง = โปรไฟล์เจ้าของบัญชี ไม่ใช่โปรไฟล์เด็ก
   Widget _buildBottomNav() {
     final initial = (_firstName != null && _firstName!.isNotEmpty)
         ? _firstName![0].toUpperCase()
@@ -846,7 +844,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       selectedItemColor: const Color(0xFF2F80ED),
       unselectedItemColor: Colors.grey,
       onTap: (index) {
-        if (index == 0) return; // Home คือหน้านี้อยู่แล้ว
+        if (index == 0) return;
         if (index == 3) {
           _showComingSoon('Account settings');
           return;
@@ -864,10 +862,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             radius: 12,
             backgroundColor: Colors.purple.shade100,
             child: initial != null
-                ? Text(
-                    initial,
-                    style: const TextStyle(fontSize: 11, color: Colors.black87),
-                  )
+                ? Text(initial, style: const TextStyle(fontSize: 11, color: Colors.black87))
                 : const Icon(Icons.person, size: 14, color: Colors.black54),
           ),
           label: 'Account',
