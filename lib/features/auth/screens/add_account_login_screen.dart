@@ -28,7 +28,8 @@ class _AddAccountLoginScreenState extends State<AddAccountLoginScreen> {
         password: _passwordController.text,
       );
       // 🌟 AuthGate จะบันทึกบัญชีนี้เข้า saved accounts ให้เองอัตโนมัติ
-      if (mounted) Navigator.pop(context);
+      // 🌟 เด้งกลับ root ทีเดียว ทะลุทั้ง AccountSwitcherScreen และหน้านี้ ไม่ต้องกด back เอง
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
