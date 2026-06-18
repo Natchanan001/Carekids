@@ -5,6 +5,9 @@ import 'package:carekids/features/children/screens/add_child_screen.dart';
 import 'package:carekids/shared/utils/date_utils.dart';
 import 'package:carekids/shared/utils/mock_events.dart';
 import 'package:carekids/features/dashboard/screens/calendar_screen.dart';
+import 'package:carekids/features/auth/screens/admin_approval_screen.dart';
+import 'package:carekids/features/auth/screens/family_invite_screen.dart';
+import 'package:carekids/features/auth/screens/account_switcher_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -21,6 +24,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<ChildProfile> _children = [];
   int _selectedIndex = 0;
   bool _cardVisible = false;
+  int _pendingRequestCount = 0;
 
   DateTime? _selectedCalendarDate;
   late final int _daysInCurrentMonth;
@@ -34,7 +38,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _selectedCalendarDate = today;
     _daysInCurrentMonth = daysInMonth(today.year, today.month);
 
-    // 🌟 จำกัด strip ให้อยู่ในเดือนปัจจุบันเท่านั้น (ลด data load) และโฟกัสที่วันนี้
     _calendarScrollController = ScrollController(
       initialScrollOffset: (today.day - 1) * _calendarItemExtent,
     );
@@ -72,11 +75,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .eq('family_id', _familyId!)
           .order('created_at');
 
-      _children =
-          childrenData.map<ChildProfile>((c) => ChildProfile.fromMap(c)).toList();
+      _children = childrenData.map<ChildProfile>((c) => ChildProfile.fromMap(c)).toList();
 
       if (_selectedIndex >= _children.length) {
         _selectedIndex = 0;
+      }
+
+      // 🌟 Admin เท่านั้นที่เช็คจำนวนคำขอ join ที่รออยู่
+      if (_isAdmin) {
+        final pending = await supabase
+            .from('join_requests')
+            .select('id')
+            .eq('family_id', _familyId!)
+            .eq('status', 'pending');
+        _pendingRequestCount = (pending as List).length;
+      } else {
+        _pendingRequestCount = 0;
       }
     } catch (e) {
       if (mounted) {
@@ -106,10 +120,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
               final value = double.tryParse(controller.text);
@@ -147,15 +158,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await _loadData();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Weight updated ✅')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Weight updated ✅')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update weight: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update weight: $e')));
       }
     }
   }
@@ -165,6 +172,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => AddChildScreen(familyId: _familyId!)),
+    );
+    _loadData();
+  }
+
+  Future<void> _goToApprovals() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
     );
     _loadData();
   }
@@ -191,7 +206,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Drawer _buildDrawer() {
+Drawer _buildDrawer() {
     return Drawer(
       child: SafeArea(
         child: Column(
@@ -199,10 +214,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.all(20),
-              child: Text('Menu',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              child: Text(
+                'Menu',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
             ),
             const Divider(),
+            if (_isAdmin && _familyId != null)
+              ListTile(
+                leading: const Icon(Icons.qr_code),
+                title: const Text('View Invitation Code'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FamilyInviteScreen(familyId: _familyId!),
+                    ),
+                  );
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text('Sign Out (Debug)'),
@@ -211,6 +242,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 await Supabase.instance.client.auth.signOut();
               },
             ),
+            
+            // 🌟 เพิ่มโค้ดตามภาพ: ดันรายการ Switch Account ลงไปอยู่ล่างสุด
+            const Spacer(), 
+            const Divider(),
+            ListTile(
+              leading: CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.purple.shade100,
+                child: Text(
+                  (_firstName != null && _firstName!.isNotEmpty) ? _firstName![0].toUpperCase() : '',
+                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                ),
+              ),
+              title: Text(_firstName ?? 'Account'),
+              subtitle: const Text('Switch account'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AccountSwitcherScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -231,22 +286,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8),
-                  ],
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8)],
                 ),
                 child: Row(
                   children: const [
-                    Text('Care',
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2F80ED))),
-                    Text('Kids',
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFEB5C8C))),
+                    Text('Care', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2F80ED))),
+                    Text('Kids', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFEB5C8C))),
                   ],
                 ),
               ),
@@ -265,11 +310,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-          Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            ),
+          Row(
+            children: [
+              // 🌟 Badge แจ้งเตือนคำขอ join — โชว์เฉพาะ Admin ที่มีคำขอรออยู่
+              if (_isAdmin && _pendingRequestCount > 0)
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications_outlined),
+                      onPressed: _goToApprovals,
+                    ),
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        child: Text(
+                          '$_pendingRequestCount',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 10),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              Builder(
+                builder: (context) => IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -323,7 +397,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _buildHeader(),
           const SizedBox(height: 16),
           _buildAvatarRow(),
-
           if (_cardVisible && _children.isNotEmpty) ...[
             const SizedBox(height: 16),
             Padding(
@@ -331,19 +404,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: _buildChildCard(_children[_selectedIndex]),
             ),
           ],
-
           const SizedBox(height: 24),
           _buildQuickActions(),
           const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _buildNextReminder(),
-          ),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: _buildNextReminder()),
           const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _buildCalendar(),
-          ),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: _buildCalendar()),
           const SizedBox(height: 24),
         ],
       ),
@@ -358,10 +424,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 20),
         children: [
           for (int i = 0; i < _children.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: _buildChildAvatar(_children[i], i),
-            ),
+            Padding(padding: const EdgeInsets.only(right: 16), child: _buildChildAvatar(_children[i], i)),
           if (_isAdmin) _buildAddChildAvatar(),
         ],
       ),
@@ -387,20 +450,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected ? const Color(0xFF2F80ED) : Colors.transparent,
-                width: 2,
-              ),
+              border: Border.all(color: isSelected ? const Color(0xFF2F80ED) : Colors.transparent, width: 2),
             ),
             child: CircleAvatar(
               radius: 26,
-              backgroundColor: child.gender == 'female'
-                  ? Colors.pink.shade100
-                  : Colors.blue.shade100,
+              backgroundColor: child.gender == 'female' ? Colors.pink.shade100 : Colors.blue.shade100,
               child: Text(
                 child.name.isNotEmpty ? child.name[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
               ),
             ),
           ),
@@ -423,11 +480,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onTap: _goToAddChild,
       child: Column(
         children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: Colors.grey.shade200,
-            child: const Icon(Icons.add, color: Colors.grey),
-          ),
+          CircleAvatar(radius: 28, backgroundColor: Colors.grey.shade200, child: const Icon(Icons.add, color: Colors.grey)),
           const SizedBox(height: 6),
           const Text('Add', style: TextStyle(fontSize: 12)),
         ],
@@ -441,9 +494,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,48 +502,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(child.name,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(child.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               if (child.gender != null)
-                Icon(
-                  child.gender == 'female' ? Icons.female : Icons.male,
-                  color: child.gender == 'female' ? Colors.pink : Colors.blue,
-                ),
+                Icon(child.gender == 'female' ? Icons.female : Icons.male,
+                    color: child.gender == 'female' ? Colors.pink : Colors.blue),
             ],
           ),
           const SizedBox(height: 4),
           Text(child.ageLabel, style: const TextStyle(color: Colors.grey)),
           const Divider(height: 32),
-
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Current weight',
-                      style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const Text('Current weight', style: TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 4),
-                  Text('${child.weightKg} kg',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  Text('${child.weightKg} kg', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 ],
               ),
-              if (_isAdmin)
-                ElevatedButton(
-                  onPressed: () => _updateWeight(child),
-                  child: const Text('Update'),
-                ),
+              if (_isAdmin) ElevatedButton(onPressed: () => _updateWeight(child), child: const Text('Update')),
             ],
           ),
-
           if (child.isWeightStale) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
+              decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
               child: Row(
                 children: [
                   Icon(Icons.warning_amber, color: Colors.orange.shade700, size: 18),
@@ -514,24 +551,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildQuickActions() {
     final actions = [
-      _QuickAction(
-        title: 'Calculator\nDose',
-        icon: Icons.medication_liquid,
-        gradient: const [Color(0xFFB7F0D8), Color(0xFFEAFBF2)],
-        iconColor: const Color(0xFF1F9D6B),
-      ),
-      _QuickAction(
-        title: 'Medication\nLog',
-        icon: Icons.assignment_outlined,
-        gradient: const [Color(0xFFBFDBFF), Color(0xFFEAF3FF)],
-        iconColor: const Color(0xFF2F6FE0),
-      ),
-      _QuickAction(
-        title: 'Symptom\nLog',
-        icon: Icons.sick_outlined,
-        gradient: const [Color(0xFFFFD9A0), Color(0xFFFFF3E0)],
-        iconColor: const Color(0xFFE08A1F),
-      ),
+      _QuickAction(title: 'Calculator\nDose', icon: Icons.medication_liquid,
+          gradient: const [Color(0xFFB7F0D8), Color(0xFFEAFBF2)], iconColor: const Color(0xFF1F9D6B)),
+      _QuickAction(title: 'Medication\nLog', icon: Icons.assignment_outlined,
+          gradient: const [Color(0xFFBFDBFF), Color(0xFFEAF3FF)], iconColor: const Color(0xFF2F6FE0)),
+      _QuickAction(title: 'Symptom\nLog', icon: Icons.sick_outlined,
+          gradient: const [Color(0xFFFFD9A0), Color(0xFFFFF3E0)], iconColor: const Color(0xFFE08A1F)),
     ];
 
     return Column(
@@ -539,8 +564,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text('Quick Action',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          child: Text('Quick Action', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -550,10 +574,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
               for (final action in actions)
-                Padding(
-                  padding: const EdgeInsets.only(right: 14),
-                  child: _buildQuickActionCard(action),
-                ),
+                Padding(padding: const EdgeInsets.only(right: 14), child: _buildQuickActionCard(action)),
             ],
           ),
         ),
@@ -567,30 +588,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          colors: action.gradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: LinearGradient(colors: action.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
       ),
       child: Stack(
         children: [
-          Positioned(
-            right: -10,
-            bottom: -10,
-            child: Icon(action.icon, size: 80, color: Colors.white.withOpacity(0.4)),
-          ),
+          Positioned(right: -10, bottom: -10, child: Icon(action.icon, size: 80, color: Colors.white.withOpacity(0.4))),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                action.title,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: action.iconColor,
-                ),
-              ),
+              Text(action.title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: action.iconColor)),
               const Spacer(),
               ElevatedButton(
                 onPressed: () => _showComingSoon(action.title.replaceAll('\n', ' ')),
@@ -599,9 +605,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   foregroundColor: Colors.black87,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 ),
                 child: const Text('Start Now', style: TextStyle(fontSize: 12)),
               ),
@@ -614,20 +618,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildNextReminder() {
     final reminders = [
-      {
-        'time': '12:30 AM',
-        'name': 'Paracetamol',
-        'dose': '3.5 ML',
-        'icon': Icons.wb_sunny_outlined,
-        'color': Colors.orange,
-      },
-      {
-        'time': '7:00 PM',
-        'name': 'Paracetamol',
-        'dose': '3.5 ML',
-        'icon': Icons.nightlight_round,
-        'color': Colors.indigo,
-      },
+      {'time': '12:30 AM', 'name': 'Paracetamol', 'dose': '3.5 ML', 'icon': Icons.wb_sunny_outlined, 'color': Colors.orange},
+      {'time': '7:00 PM', 'name': 'Paracetamol', 'dose': '3.5 ML', 'icon': Icons.nightlight_round, 'color': Colors.indigo},
     ];
 
     return Column(
@@ -635,8 +627,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Row(
           children: const [
-            Text('Next Reminder',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('Next Reminder', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             SizedBox(width: 6),
             Icon(Icons.alarm, size: 20, color: Colors.black54),
           ],
@@ -650,9 +641,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8),
-                ],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)],
               ),
               child: Row(
                 children: [
@@ -670,10 +659,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${r['time']} | ${r['name']}',
-                            style: const TextStyle(fontWeight: FontWeight.w600)),
-                        Text(r['dose'] as String,
-                            style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text('${r['time']} | ${r['name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(r['dose'] as String, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                       ],
                     ),
                   ),
@@ -686,15 +673,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
-        Text(
-          '* Sample reminder — actual medication schedule arrives with Feature 002',
-          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-        ),
+        Text('* Sample reminder — actual medication schedule arrives with Feature 002',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
       ],
     );
   }
 
-  // 🌟 Calendar strip: จำกัดเฉพาะเดือนปัจจุบัน + ไอคอนเปิดปฏิทินเต็มรูปแบบ
   Widget _buildCalendar() {
     final today = MockEvents.today;
 
@@ -704,15 +688,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Calendar',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Calendar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             IconButton(
               icon: const Icon(Icons.calendar_month, color: Color(0xFF2F80ED)),
               tooltip: 'Full calendar',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => CalendarScreen()),
-              ),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CalendarScreen())),
             ),
           ],
         ),
@@ -758,29 +738,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   decoration: BoxDecoration(
                     color: backgroundColor,
                     borderRadius: BorderRadius.circular(14),
-                    border: hasEvent && !isSelected
-                        ? Border.all(color: Colors.orange.shade200)
-                        : null,
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6),
-                    ],
+                    border: hasEvent && !isSelected ? Border.all(color: Colors.orange.shade200) : null,
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)],
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        weekdayShortNames[date.weekday - 1],
-                        style: TextStyle(fontSize: 12, color: subTextColor),
-                      ),
+                      Text(weekdayShortNames[date.weekday - 1], style: TextStyle(fontSize: 12, color: subTextColor)),
                       const SizedBox(height: 3),
-                      Text(
-                        '${date.day}',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: textColor,
-                        ),
-                      ),
+                      Text('${date.day}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
                       const SizedBox(height: 3),
                       Text(
                         isToday ? 'Today' : (eventLabel ?? 'No item'),
@@ -815,10 +781,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Row(
         children: [
-          Icon(
-            eventLabel != null ? Icons.event_available : Icons.event_busy,
-            color: eventLabel != null ? const Color(0xFF2F80ED) : Colors.grey,
-          ),
+          Icon(eventLabel != null ? Icons.event_available : Icons.event_busy,
+              color: eventLabel != null ? const Color(0xFF2F80ED) : Colors.grey),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -834,9 +798,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildBottomNav() {
-    final initial = (_firstName != null && _firstName!.isNotEmpty)
-        ? _firstName![0].toUpperCase()
-        : null;
+    final initial = (_firstName != null && _firstName!.isNotEmpty) ? _firstName![0].toUpperCase() : null;
 
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
@@ -853,10 +815,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
       items: [
         const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today), label: 'Schedule'),
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.location_on_outlined), label: 'Hospital'),
+        const BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Schedule'),
+        const BottomNavigationBarItem(icon: Icon(Icons.location_on_outlined), label: 'Hospital'),
         BottomNavigationBarItem(
           icon: CircleAvatar(
             radius: 12,
@@ -878,10 +838,5 @@ class _QuickAction {
   final List<Color> gradient;
   final Color iconColor;
 
-  _QuickAction({
-    required this.title,
-    required this.icon,
-    required this.gradient,
-    required this.iconColor,
-  });
+  _QuickAction({required this.title, required this.icon, required this.gradient, required this.iconColor});
 }
