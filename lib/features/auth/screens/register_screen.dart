@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:carekids/features/auth/screens/login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final VoidCallback onSwitchToLogin;
+
+  const RegisterScreen({super.key, required this.onSwitchToLogin});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -29,7 +30,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // 🌟 Phone Number ต้องเป็นตัวเลขเท่านั้น ตาม spec ใหม่
     final phoneDigitsOnly = RegExp(r'^[0-9]+$');
     if (!phoneDigitsOnly.hasMatch(_phoneController.text.trim())) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -53,6 +53,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         },
       );
 
+      // 🌟 ไม่ต้อง Navigator อะไรเลย — AuthGate ยังมีชีวิตอยู่เสมอ จะ detect session ใหม่
+      // แล้วพาไปหน้า Workspace Selection ให้เองอัตโนมัติทันที
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Registration successful!')),
@@ -119,10 +121,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
             TextButton(
-              onPressed: () => Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              ),
+              onPressed: widget.onSwitchToLogin,
               child: const Text("Already have an account? Log In"),
             ),
           ],
