@@ -242,7 +242,15 @@ Drawer _buildDrawer() {
                 await Supabase.instance.client.auth.signOut();
               },
             ),
-            
+            if (_isAdmin)
+              ListTile(
+                leading: const Icon(Icons.group_add_outlined),
+                title: const Text('Manage Join Requests'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _goToApprovals();
+                },
+              ),
             // 🌟 เพิ่มโค้ดตามภาพ: ดันรายการ Switch Account ลงไปอยู่ล่างสุด
             const Spacer(), 
             const Divider(),
