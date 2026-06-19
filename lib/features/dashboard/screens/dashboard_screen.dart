@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:carekids/shared/models/child_profile.dart';
 import 'package:carekids/features/children/screens/add_child_screen.dart';
 import 'package:carekids/shared/utils/date_utils.dart';
 import 'package:carekids/shared/utils/mock_events.dart';
 import 'package:carekids/features/dashboard/screens/calendar_screen.dart';
-import 'package:carekids/features/auth/screens/admin_approval_screen.dart';
+import 'package:carekids/features/dashboard/screens/notification_screen.dart';
 import 'package:carekids/features/auth/screens/family_invite_screen.dart';
 import 'package:carekids/features/auth/screens/account_switcher_screen.dart';
-import 'package:carekids/features/dashboard/screens/notification_screen.dart';
+import 'package:carekids/features/auth/screens/user_profile_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -82,7 +83,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _selectedIndex = 0;
       }
 
-      // 🌟 Admin เท่านั้นที่เช็คจำนวนคำขอ join ที่รออยู่
       if (_isAdmin) {
         final pending = await supabase
             .from('join_requests')
@@ -102,14 +102,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<void> _goToNotifications() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const NotificationScreen()),
-    );
-    _loadData(); // reload badge count เมื่อกลับมา
   }
 
   Future<void> _updateWeight(ChildProfile child) async {
@@ -176,6 +168,149 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // 🌟 ใหม่: confirm ก่อนสลับไปดูเด็กคนอื่น (แตะคนเดิมซ้ำยังคงแค่ toggle การ์ดเหมือนเดิม ไม่ต้อง confirm)
+  Future<void> _confirmSwitchChild(int index) async {
+    if (index == _selectedIndex) {
+      setState(() => _cardVisible = !_cardVisible);
+      return;
+    }
+
+    final child = _children[index];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Switch profile?'),
+        content: Text("Switch to ${child.name}'s profile?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Switch')),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() {
+        _selectedIndex = index;
+        _cardVisible = true;
+      });
+    }
+  }
+
+  // 🌟 ใหม่: popup menu ตอนกดค้างที่เด็กซึ่งกำลัง active อยู่ (Admin เท่านั้น)
+  void _showChildOptionsMenu(ChildProfile child) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(child.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Change Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _changeChildPhoto(child);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit Name'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _editChildName(child);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 🌟 ใหม่: เปลี่ยนรูปเด็ก เลือกจากคลังภาพ (gallery) แล้วอัปโหลดขึ้น Supabase Storage
+  Future<void> _changeChildPhoto(ChildProfile child) async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (pickedFile == null) return;
+
+    try {
+      final supabase = Supabase.instance.client;
+      final bytes = await pickedFile.readAsBytes();
+      final path = '${child.id}.jpg';
+
+      await supabase.storage.from('child-photos').uploadBinary(
+            path,
+            bytes,
+            fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+          );
+
+      final publicUrl = supabase.storage.from('child-photos').getPublicUrl(path);
+      // 🌟 ใส่ timestamp กัน cache รูปเก่าค้าง ไม่งั้นรูปใหม่จะไม่อัปเดตในแอป
+      final cacheBustedUrl = '$publicUrl?t=${DateTime.now().millisecondsSinceEpoch}';
+
+      await supabase.from('children').update({'photo_url': cacheBustedUrl}).eq('id', child.id);
+
+      await _loadData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo updated ✅')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update photo: $e')));
+      }
+    }
+  }
+
+  // 🌟 ใหม่: แก้ไขชื่อเด็ก
+  Future<void> _editChildName(ChildProfile child) async {
+    final controller = TextEditingController(text: child.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: "Child's Name", border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isEmpty) return;
+              Navigator.pop(context, controller.text.trim());
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName == null || newName == child.name) return;
+
+    try {
+      await Supabase.instance.client.from('children').update({'name': newName}).eq('id', child.id);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name updated ✅')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update name: $e')));
+      }
+    }
+  }
+
   Future<void> _goToAddChild() async {
     if (_familyId == null) return;
     await Navigator.push(
@@ -185,10 +320,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadData();
   }
 
-  Future<void> _goToApprovals() async {
+  Future<void> _goToNotifications() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
+      MaterialPageRoute(builder: (_) => const NotificationScreen()),
+    );
+    _loadData();
+  }
+
+  Future<void> _goToUserProfile() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UserProfileScreen()),
     );
     _loadData();
   }
@@ -223,10 +366,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.all(20),
-              child: Text(
-                'Menu',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
+              child: Text('Menu', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             ),
             const Divider(),
             if (_isAdmin && _familyId != null)
@@ -237,9 +377,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => FamilyInviteScreen(familyId: _familyId!),
-                    ),
+                    MaterialPageRoute(builder: (_) => FamilyInviteScreen(familyId: _familyId!)),
                   );
                 },
               ),
@@ -257,10 +395,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 title: const Text('Manage Join Requests'),
                 onTap: () {
                   Navigator.pop(context);
-                  _goToApprovals();
+                  _goToNotifications();
                 },
               ),
-
             const Spacer(),
             const Divider(),
             ListTile(
@@ -329,14 +466,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           Row(
             children: [
-              // 🌟 แก้ตรงนี้: ให้กระดิ่งโชว์ตลอดสำหรับ Admin และ Badge จะโชว์เฉพาะตอนมี pending
               if (_isAdmin)
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
                     IconButton(
                       icon: const Icon(Icons.notifications_outlined),
-                      onPressed: _goToNotifications, // 🌟 เปลี่ยนไปหน้า NotificationScreen แทน
+                      onPressed: _goToNotifications,
                     ),
                     if (_pendingRequestCount > 0)
                       Positioned(
@@ -344,15 +480,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         top: 4,
                         child: Container(
                           padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                              color: Colors.red, shape: BoxShape.circle),
-                          constraints: const BoxConstraints(
-                              minWidth: 16, minHeight: 16),
+                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
                           child: Text(
                             '$_pendingRequestCount',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 10),
+                            style: const TextStyle(color: Colors.white, fontSize: 10),
                           ),
                         ),
                       ),
@@ -455,16 +588,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildChildAvatar(ChildProfile child, int index) {
     final isSelected = index == _selectedIndex;
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (_selectedIndex == index && _cardVisible) {
-            _cardVisible = false;
-          } else {
-            _selectedIndex = index;
-            _cardVisible = true;
-          }
-        });
-      },
+      onTap: () => _confirmSwitchChild(index),
+      // 🌟 long press เปิดเมนูได้เฉพาะ Admin และต้องเป็นเด็กที่ active (เลือกอยู่) เท่านั้น
+      onLongPress: (_isAdmin && isSelected) ? () => _showChildOptionsMenu(child) : null,
       child: Column(
         children: [
           Container(
@@ -476,10 +602,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: CircleAvatar(
               radius: 26,
               backgroundColor: child.gender == 'female' ? Colors.pink.shade100 : Colors.blue.shade100,
-              child: Text(
-                child.name.isNotEmpty ? child.name[0].toUpperCase() : '?',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
-              ),
+              backgroundImage: child.photoUrl != null ? NetworkImage(child.photoUrl!) : null,
+              child: child.photoUrl == null
+                  ? Text(
+                      child.name.isNotEmpty ? child.name[0].toUpperCase() : '?',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                    )
+                  : null,
             ),
           ),
           const SizedBox(height: 6),
@@ -521,9 +650,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(child.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: child.gender == 'female' ? Colors.pink.shade100 : Colors.blue.shade100,
+                backgroundImage: child.photoUrl != null ? NetworkImage(child.photoUrl!) : null,
+                child: child.photoUrl == null
+                    ? Text(child.name.isNotEmpty ? child.name[0].toUpperCase() : '?',
+                        style: const TextStyle(fontWeight: FontWeight.bold))
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(child.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              ),
               if (child.gender != null)
                 Icon(child.gender == 'female' ? Icons.female : Icons.male,
                     color: child.gender == 'female' ? Colors.pink : Colors.blue),
@@ -563,6 +703,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
+            ),
+          ],
+          if (_isAdmin) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Tip: long-press this child\'s avatar above to change photo or edit name',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
             ),
           ],
         ],
@@ -829,7 +976,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onTap: (index) {
         if (index == 0) return;
         if (index == 3) {
-          _showComingSoon('Account settings');
+          // 🌟 เปลี่ยนจาก coming soon -> เปิดหน้า User Profile จริง
+          _goToUserProfile();
           return;
         }
         _showComingSoon('This section');
