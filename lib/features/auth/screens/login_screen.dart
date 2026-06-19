@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:carekids/features/auth/screens/register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final VoidCallback onSwitchToRegister;
+
+  const LoginScreen({super.key, required this.onSwitchToRegister});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -21,7 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      // AuthGate จะ detect session เองและเด้งไป Dashboard อัตโนมัติ
+      // 🌟 ไม่ต้อง Navigator อะไรเลย — AuthGate ยังมีชีวิตอยู่เสมอ จะ detect แล้วไปต่อเองอัตโนมัติ
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -29,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -57,28 +58,17 @@ class _LoginScreenState extends State<LoginScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _login,
                 child: _isLoading
-                    ? const CircularProgressIndicator()
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
                     : const Text('Log In'),
               ),
             ),
             TextButton(
-                onPressed: () => Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => const RegisterScreen()),
-               ),
-               child: const Text("Don't have an account? Sign Up"),
-            ),
-            TextButton(
-              onPressed: () async {
-                await Supabase.instance.client.auth.signOut();
-                if (context.mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (route) => false,
-                  );
-                }
-              },
-              child: const Text('Sign out (debug)'),
+              onPressed: widget.onSwitchToRegister,
+              child: const Text("Don't have an account? Sign Up"),
             ),
           ],
         ),
