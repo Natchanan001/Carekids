@@ -6,6 +6,7 @@ class ChildProfile {
   final double weightKg;
   final DateTime weightUpdatedAt;
   final String? gender;
+  final String? photoUrl;
 
   ChildProfile({
     required this.id,
@@ -15,6 +16,7 @@ class ChildProfile {
     required this.weightKg,
     required this.weightUpdatedAt,
     this.gender,
+    this.photoUrl,
   });
 
   factory ChildProfile.fromMap(Map<String, dynamic> map) {
@@ -26,6 +28,7 @@ class ChildProfile {
       weightKg: (map['weight_kg'] as num).toDouble(),
       weightUpdatedAt: DateTime.parse(map['weight_updated_at']),
       gender: map['gender'],
+      photoUrl: map['photo_url'],
     );
   }
 
