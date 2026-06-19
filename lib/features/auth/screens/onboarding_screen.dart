@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:carekids/features/auth/screens/role_selection_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onFinished;
@@ -393,61 +394,95 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 32),
+          const SizedBox(height: 16),
           const Text('Invite Caregivers 👨‍👩‍👧',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           const Text(
               'Share this code with your parents, guardians, or caregivers to join your family.',
               style: TextStyle(fontSize: 16, color: Colors.grey)),
-          const SizedBox(height: 32),
-          FutureBuilder(
-            future: Supabase.instance.client
-                .from('profiles')
-                .select('family_id')
-                .eq('id', Supabase.instance.client.auth.currentUser!.id)
-                .single(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const CircularProgressIndicator();
-              return FutureBuilder(
+          const SizedBox(height: 24),
+
+          // 🌟 ใช้ Expanded + ScrollView แทน Spacer เดิม เพราะเนื้อหาสูงขึ้นหลังเพิ่ม QR
+          Expanded(
+            child: SingleChildScrollView(
+              child: FutureBuilder(
                 future: Supabase.instance.client
-                    .from('families')
-                    .select('invite_code')
-                    .eq('id', snapshot.data!['family_id'])
+                    .from('profiles')
+                    .select('family_id')
+                    .eq('id', Supabase.instance.client.auth.currentUser!.id)
                     .single(),
-                builder: (context, familySnapshot) {
-                  if (!familySnapshot.hasData) {
-                    return const CircularProgressIndicator();
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
                   }
-                  final code = familySnapshot.data!['invite_code'];
-                  return Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(code,
-                            style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 4)),
-                        IconButton(
-                          icon: const Icon(Icons.copy),
-                          onPressed: () {
-                            // copy to clipboard
-                          },
-                        ),
-                      ],
-                    ),
+                  return FutureBuilder(
+                    future: Supabase.instance.client
+                        .from('families')
+                        .select('invite_code')
+                        .eq('id', snapshot.data!['family_id'])
+                        .single(),
+                    builder: (context, familySnapshot) {
+                      if (!familySnapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final code = familySnapshot.data!['invite_code'];
+                      return Column(
+                        children: [
+                          // 🌟 QR Code ใหม่ — ให้สแกนเข้าร่วมแทนการพิมพ์โค้ดได้
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10),
+                              ],
+                            ),
+                            child: QrImageView(
+                              data: code,
+                              version: QrVersions.auto,
+                              size: 180,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(code,
+                                    style: const TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 4)),
+                                IconButton(
+                                  icon: const Icon(Icons.copy),
+                                  onPressed: () {
+                                    // 🌟 ของเดิมปุ่มนี้เป็น comment เปล่า ไม่ได้ทำงานจริง แก้ให้ copy จริง
+                                    Clipboard.setData(ClipboardData(text: code));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Copied to clipboard')),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
-              );
-            },
+              ),
+            ),
           ),
-          const Spacer(),
+
           Row(
             children: [
               Expanded(
@@ -459,7 +494,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  // 🌟 ให้โยงไปที่ _finishOnboarding
                   onPressed: _isLoading ? null : _finishOnboarding,
                   child: _isLoading
                       ? const SizedBox(
@@ -476,7 +510,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ],
           ),
           TextButton(
-            // 🌟 ให้โยงไปที่ _finishOnboarding เหมือนกันเป๊ะ เพราะต้องเซฟเด็กลง DB ด้วยจ้า!
             onPressed: _isLoading ? null : _finishOnboarding,
             child: const Text('Skip for Now, Invite Later'),
           ),

@@ -49,8 +49,7 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to decline: $e')),
-        );
+          SnackBar(content: Text('Failed to decline: $e')));
       }
     }
   }
@@ -64,7 +63,8 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
           builder: (context, setStateDialog) {
             return AlertDialog(
               title: Text(
-                  'Assign a role for ${request['requester_first_name']} ${request['requester_last_name']}'),
+                'Assign a role for ${request['requester_first_name']} ${request['requester_last_name']}',
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -90,7 +90,9 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: selected == null ? null : () => Navigator.pop(context, selected),
+                  onPressed: selected == null
+                      ? null
+                      : () => Navigator.pop(context, selected),
                   child: const Text('Confirm'),
                 ),
               ],
@@ -103,37 +105,24 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
     if (chosenRole == null) return;
 
     try {
-      final supabase = Supabase.instance.client;
-      final adminId = supabase.auth.currentUser!.id;
-
-      await supabase.from('join_requests').update({
-        'status': 'approved',
-        'resolved_at': DateTime.now().toIso8601String(),
-        'resolved_by': adminId,
-      }).eq('id', request['id']);
-
-      await supabase.from('profiles').insert({
-        'id': request['user_id'],
-        'family_id': request['family_id'],
-        'first_name': request['requester_first_name'],
-        'last_name': request['requester_last_name'],
-        'phone_number': request['requester_phone'],
-        'role': chosenRole,
-        'onboarding_complete': true,
-      });
+      // 🌟 เปลี่ยนมาใช้ RPC ตัวเดียว ทำ update+insert แบบ atomic ป้องกัน data ค้างครึ่งๆ
+      await Supabase.instance.client.rpc(
+        'approve_join_request',
+        params: {'p_request_id': request['id'], 'p_role': chosenRole},
+      );
 
       _loadRequests();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Approved ✅')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Approved ✅')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to approve: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to approve: $e')));
       }
     }
   }
