@@ -8,6 +8,7 @@ import 'package:carekids/features/dashboard/screens/calendar_screen.dart';
 import 'package:carekids/features/auth/screens/admin_approval_screen.dart';
 import 'package:carekids/features/auth/screens/family_invite_screen.dart';
 import 'package:carekids/features/auth/screens/account_switcher_screen.dart';
+import 'package:carekids/features/dashboard/screens/notification_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -101,6 +102,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _goToNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationScreen()),
+    );
+    _loadData(); // reload badge count เมื่อกลับมา
   }
 
   Future<void> _updateWeight(ChildProfile child) async {
@@ -206,7 +215,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-Drawer _buildDrawer() {
+  Drawer _buildDrawer() {
     return Drawer(
       child: SafeArea(
         child: Column(
@@ -251,8 +260,8 @@ Drawer _buildDrawer() {
                   _goToApprovals();
                 },
               ),
-            // 🌟 เพิ่มโค้ดตามภาพ: ดันรายการ Switch Account ลงไปอยู่ล่างสุด
-            const Spacer(), 
+
+            const Spacer(),
             const Divider(),
             ListTile(
               leading: CircleAvatar(
@@ -320,29 +329,33 @@ Drawer _buildDrawer() {
           ),
           Row(
             children: [
-              // 🌟 Badge แจ้งเตือนคำขอ join — โชว์เฉพาะ Admin ที่มีคำขอรออยู่
-              if (_isAdmin && _pendingRequestCount > 0)
+              // 🌟 แก้ตรงนี้: ให้กระดิ่งโชว์ตลอดสำหรับ Admin และ Badge จะโชว์เฉพาะตอนมี pending
+              if (_isAdmin)
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
                     IconButton(
                       icon: const Icon(Icons.notifications_outlined),
-                      onPressed: _goToApprovals,
+                      onPressed: _goToNotifications, // 🌟 เปลี่ยนไปหน้า NotificationScreen แทน
                     ),
-                    Positioned(
-                      right: 4,
-                      top: 4,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                        child: Text(
-                          '$_pendingRequestCount',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white, fontSize: 10),
+                    if (_pendingRequestCount > 0)
+                      Positioned(
+                        right: 4,
+                        top: 4,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                              color: Colors.red, shape: BoxShape.circle),
+                          constraints: const BoxConstraints(
+                              minWidth: 16, minHeight: 16),
+                          child: Text(
+                            '$_pendingRequestCount',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 10),
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               Builder(
