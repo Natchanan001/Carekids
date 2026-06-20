@@ -26,6 +26,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _firstName;
   String? _familyName;
   List<ChildProfile> _children = [];
+  // 🌟 Mock data ชั่วคราว: รายชื่อสมาชิกในครอบครัว (ยังไม่มี table/relation จริงใน Supabase)
+  // TODO: เชื่อมกับ profiles.eq('family_id', _familyId) จริงเมื่อ backend พร้อม
+  List<_FamilyMember> _familyMembers = [];
+  String? _currentUserId;
   int _selectedIndex = 0;
   bool _cardVisible = false;
   int _pendingRequestCount = 0;
@@ -73,6 +77,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _familyId = profile['family_id'];
       _firstName = profile['first_name'];
       _familyName = profile['families']?['name'];
+      _currentUserId = userId;
+
+      // 🌟 ดึงสมาชิกจริงทั้งหมดในแฟมิลี่เดียวกัน (ต้องรัน migration เพิ่ม column display_name ก่อน)
+      final membersData = await supabase
+          .from('profiles')
+          .select('id, display_name, first_name, last_name, role, family_id, created_at')
+          .eq('family_id', _familyId!)
+          .order('created_at'); // 🌟 เรียงเก่า -> ใหม่ ใช้หา "หัวตี้" แบบ heuristic ด้านล่าง
+
+      // ⚠️ HEURISTIC ชั่วคราว: ยังไม่มี families.owner_id ใน schema จริง
+      // จึงสมมติว่า admin ที่ join/created_at เก่าที่สุดคือผู้สร้างแฟมิลี่ (หัวตี้)
+      // วิธีนี้ไม่แม่นยำ 100% (เช่น ถ้าหัวตี้ตัวจริงโดน remove ไปแล้ว คนถัดไปจะถูกเข้าใจผิดว่าเป็นหัวตี้)
+      // TODO: เพิ่ม column families.owner_id แล้วเปลี่ยนมาเช็คจาก field นั้นโดยตรงแทน heuristic นี้
+      final sortedMembers = (membersData as List);
+      String? heuristicOwnerId;
+      for (final m in sortedMembers) {
+        if (m['role'] == 'admin') {
+          heuristicOwnerId = m['id'] as String;
+          break;
+        }
+      }
+
+      _familyMembers = sortedMembers.map((m) {
+        final id = m['id'] as String;
+        final firstName = m['first_name'] as String? ?? '';
+        final lastName = m['last_name'] as String? ?? '';
+        final fullName = [firstName, lastName].where((s) => s.isNotEmpty).join(' ');
+        final displayName = (m['display_name'] as String?)?.isNotEmpty == true
+            ? m['display_name'] as String
+            : (fullName.isNotEmpty ? fullName : 'Member');
+        return _FamilyMember(
+          id: id,
+          displayName: displayName,
+          role: m['role'] as String? ?? 'caregiver',
+          isOwner: id == heuristicOwnerId,
+        );
+      }).toList();
 
       final childrenData = await supabase
           .from('children')
@@ -196,6 +237,275 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _selectedIndex = index;
         _cardVisible = true;
       });
+    }
+  }
+
+  // 🌟 ใหม่: popup menu ตอนกดค้างที่สมาชิกในครอบครัว (จาก Drawer)
+  // - Admin: เห็นครบ (Edit Name, Manage Role, Remove from Family) ไม่ว่าจะกดค้างใคร
+  // - Caregiver: กดค้างได้แค่ตัวเอง เห็นแค่ Edit Name + Leave Family
+  void _showMemberOptionsMenu(_FamilyMember member) {
+    final isMe = member.id == _currentUserId;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(member.displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit Display Name'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _editMemberName(member);
+                },
+              ),
+              // 🌟 Manage Role: Admin เท่านั้น และจัดการได้ทุกคน (รวมตัวเอง)
+              if (_isAdmin)
+                ListTile(
+                  leading: const Icon(Icons.admin_panel_settings_outlined),
+                  title: const Text('Manage Role'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showRoleManager(member);
+                  },
+                ),
+              // 🌟 Remove/Leave:
+              // - Admin มองคนอื่น -> "Remove from Family"
+              // - ตัวเองมองตัวเอง (ไม่ว่า role ไหน) -> "Leave Family"
+              if (_isAdmin && !isMe)
+                ListTile(
+                  leading: const Icon(Icons.person_remove_outlined, color: Colors.red),
+                  title: const Text('Remove from Family', style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _confirmRemoveMember(member, isSelfLeaving: false);
+                  },
+                ),
+              if (isMe)
+                ListTile(
+                  leading: const Icon(Icons.exit_to_app, color: Colors.red),
+                  title: const Text('Leave Family', style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _confirmRemoveMember(member, isSelfLeaving: true);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 🌟 แก้ display name ของสมาชิก (เฉพาะในแฟมิลี่นี้ — แยกจาก first_name/last_name จริง)
+  // บันทึกลง Supabase profiles.display_name จริง
+  Future<void> _editMemberName(_FamilyMember member) async {
+    final controller = TextEditingController(text: member.displayName);
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Display Name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Display name', border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isEmpty) return;
+              Navigator.pop(context, value);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName == null || newName == member.displayName) return;
+
+    try {
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'display_name': newName})
+          .eq('id', member.id);
+
+      setState(() {
+        final index = _familyMembers.indexWhere((m) => m.id == member.id);
+        if (index != -1) {
+          _familyMembers[index] = member.copyWith(displayName: newName);
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Display name updated ✅')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update display name: $e')),
+        );
+      }
+    }
+  }
+
+  // 🌟 เปลี่ยน role ของสมาชิก (Admin เท่านั้นที่เปิดได้) — mock: อัปเดตแค่ local state
+  // TODO: ต่อ supabase.from('profiles').update({'role': ...}).eq('id', member.id)
+  void _showRoleManager(_FamilyMember member) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text('Manage Role: ${member.displayName}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              const Divider(height: 1),
+              RadioListTile<String>(
+                value: 'admin',
+                groupValue: member.role,
+                title: const Text('Parent (Admin)'),
+                subtitle: const Text('Full access: manage children, members, and settings'),
+                onChanged: (value) => _changeMemberRole(member, value!),
+              ),
+              RadioListTile<String>(
+                value: 'caregiver',
+                groupValue: member.role,
+                title: const Text('Caregiver'),
+                subtitle: const Text('Can view and log info, limited management access'),
+                onChanged: (value) => _changeMemberRole(member, value!),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _changeMemberRole(_FamilyMember member, String newRole) async {
+    Navigator.pop(context);
+    if (newRole == member.role) return;
+
+    try {
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'role': newRole})
+          .eq('id', member.id);
+
+      setState(() {
+        final index = _familyMembers.indexWhere((m) => m.id == member.id);
+        if (index != -1) {
+          _familyMembers[index] = _familyMembers[index].copyWith(role: newRole);
+        }
+        if (member.id == _currentUserId) {
+          _role = newRole; // 🌟 sync role ตัวเอง เผื่อกด demote/promote ตัวเอง (มีผลกับ _isAdmin ทันที)
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Role updated ✅')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update role: $e')),
+        );
+      }
+    }
+  }
+
+  // 🌟 Confirm popup ก่อน remove/leave จริง
+  // กฎพิเศษ: หัวตี้ (isOwner) ออกแฟมิลี่เองไม่ได้ ต้องโอนสิทธิ์ owner ให้ admin คนอื่นก่อน
+  Future<void> _confirmRemoveMember(_FamilyMember member, {required bool isSelfLeaving}) async {
+    if (isSelfLeaving && member.isOwner) {
+      final hasOtherAdmin = _familyMembers.any((m) => m.id != member.id && m.role == 'admin');
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Can't Leave Family"),
+          content: Text(
+            hasOtherAdmin
+                ? 'You are the family owner. Please transfer ownership to another Parent before leaving.'
+                : 'You are the only Parent in this family. Add another Parent and transfer ownership before leaving.',
+          ),
+          actions: [
+            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isSelfLeaving ? 'Leave Family?' : 'Remove Member?'),
+        content: Text(
+          isSelfLeaving
+              ? 'Are you sure you want to leave this family? You will lose access to all children\'s data.'
+              : 'Are you sure you want to remove ${member.displayName} from this family?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(isSelfLeaving ? 'Leave' : 'Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // 🌟 นำสมาชิกออกจากแฟมิลี่ด้วยการล้าง family_id (ไม่ลบ profile ทั้งบัญชี)
+      // ผู้ใช้ยังคงมีบัญชีอยู่ สามารถ join แฟมิลี่ใหม่ได้ภายหลัง
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'family_id': null})
+          .eq('id', member.id);
+
+      setState(() {
+        _familyMembers.removeWhere((m) => m.id == member.id);
+      });
+
+      if (mounted && !isSelfLeaving) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${member.displayName} removed from family')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to remove member: $e')),
+        );
+      }
+      return;
+    }
+
+    if (isSelfLeaving && mounted) {
+      await Supabase.instance.client.auth.signOut();
     }
   }
 
@@ -407,47 +717,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Drawer _buildDrawer() {
+    final admins = _familyMembers.where((m) => m.role == 'admin').toList();
+    final caregivers = _familyMembers.where((m) => m.role == 'caregiver').toList();
+
     return Drawer(
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text('Menu', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            ),
-            const Divider(),
-            if (_isAdmin && _familyId != null)
-              ListTile(
-                leading: const Icon(Icons.qr_code),
-                title: const Text('View Invitation Code'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => FamilyInviteScreen(familyId: _familyId!)),
-                  );
-                },
+            // 🌟 Header: ชื่อครอบครัว
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Text(
+                _familyName != null && _familyName!.isNotEmpty ? _familyName! : 'My Family',
+                style: GoogleFonts.baloo2(fontSize: 20, fontWeight: FontWeight.w700, color: const Color(0xFF1A1A1A)),
               ),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text('Sign Out (Debug)'),
-              onTap: () async {
-                Navigator.pop(context);
-                await Supabase.instance.client.auth.signOut();
-              },
             ),
-            if (_isAdmin)
-              ListTile(
-                leading: const Icon(Icons.group_add_outlined),
-                title: const Text('Manage Join Requests'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _goToNotifications();
-                },
+            const Divider(height: 1),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                children: [
+                  if (admins.isNotEmpty) ...[
+                    _buildMemberSectionLabel('Parents'),
+                    for (final member in admins) _buildMemberTile(member),
+                  ],
+                  if (caregivers.isNotEmpty) ...[
+                    _buildMemberSectionLabel('Caregivers'),
+                    for (final member in caregivers) _buildMemberTile(member),
+                  ],
+                  const SizedBox(height: 8),
+                  const Divider(height: 1),
+                  if (_isAdmin && _familyId != null)
+                    ListTile(
+                      leading: const Icon(Icons.qr_code),
+                      title: const Text('View Invitation Code'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => FamilyInviteScreen(familyId: _familyId!)),
+                        );
+                      },
+                    ),
+                  if (_isAdmin)
+                    ListTile(
+                      leading: const Icon(Icons.group_add_outlined),
+                      title: const Text('Manage Join Requests'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _goToNotifications();
+                      },
+                    ),
+                  ListTile(
+                    leading: const Icon(Icons.logout, color: Colors.red),
+                    title: const Text('Sign Out (Debug)'),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      await Supabase.instance.client.auth.signOut();
+                    },
+                  ),
+                ],
               ),
-            const Spacer(),
-            const Divider(),
+            ),
+            const Divider(height: 1),
             ListTile(
               leading: CircleAvatar(
                 radius: 16,
@@ -473,6 +806,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  Widget _buildMemberSectionLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+      child: Text(
+        label,
+        style: GoogleFonts.baloo2(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade500),
+      ),
+    );
+  }
+
+  // 🌟 แต่ละ tile กดค้างเพื่อเปิด popup จัดการสมาชิก
+  // Admin: กดค้างได้ทุกคน (ตัวเอง + admin อื่น + caregiver)
+  // Caregiver: กดค้างได้แค่ตัวเอง
+  Widget _buildMemberTile(_FamilyMember member) {
+    final isMe = member.id == _currentUserId;
+    final canLongPress = _isAdmin || isMe;
+
+    return GestureDetector(
+      onLongPress: canLongPress ? () => _showMemberOptionsMenu(member) : null,
+      child: ListTile(
+        leading: CircleAvatar(
+          radius: 16,
+          backgroundColor: member.role == 'admin' ? Colors.blue.shade100 : Colors.orange.shade100,
+          child: Text(
+            member.displayName.isNotEmpty ? member.displayName[0].toUpperCase() : '?',
+            style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.bold),
+          ),
+        ),
+        title: Row(
+          children: [
+            Flexible(child: Text(member.displayName, overflow: TextOverflow.ellipsis)),
+            if (isMe) ...[
+              const SizedBox(width: 6),
+              Text('(You)', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            ],
+            if (member.isOwner) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.star, size: 14, color: Color(0xFFE0A52E)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
 
 // logo CareKids ด้านบนซ้ายของหน้า Dashboard
   Widget _buildHeader() {
@@ -1312,6 +1691,31 @@ class _DateCardState extends State<_DateCard> {
           ],
         ),
       ),
+    );
+  }
+}
+// 🌟 Mock model: สมาชิกในครอบครัว (ใช้แสดงผลใน Drawer)
+// TODO: แทนที่ด้วย model จริงที่ map จาก Supabase table 'profiles'
+// เมื่อมี relation/column รองรับ "หัวตี้" (เช่น families.owner_id) ค่อยลบ field isOwner แบบ mock นี้ออก
+class _FamilyMember {
+  final String id;
+  final String displayName;
+  final String role; // 'admin' (Parent) หรือ 'caregiver'
+  final bool isOwner; // 🌟 mock: true ถ้าเป็นผู้สร้างครอบครัว (ห้ามออกแฟมิลี่เองจนกว่าจะโอนสิทธิ์)
+
+  const _FamilyMember({
+    required this.id,
+    required this.displayName,
+    required this.role,
+    required this.isOwner,
+  });
+
+  _FamilyMember copyWith({String? displayName, String? role, bool? isOwner}) {
+    return _FamilyMember(
+      id: id,
+      displayName: displayName ?? this.displayName,
+      role: role ?? this.role,
+      isOwner: isOwner ?? this.isOwner,
     );
   }
 }
