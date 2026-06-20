@@ -24,6 +24,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _role;
   String? _familyId;
   String? _firstName;
+  String? _familyName;
   List<ChildProfile> _children = [];
   int _selectedIndex = 0;
   bool _cardVisible = false;
@@ -64,13 +65,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final profile = await supabase
           .from('profiles')
-          .select('role, family_id, first_name, last_name')
+          .select('role, family_id, first_name, last_name, families(name)')
           .eq('id', userId)
           .single();
 
       _role = profile['role'];
       _familyId = profile['family_id'];
       _firstName = profile['first_name'];
+      _familyName = profile['families']?['name'];
 
       final childrenData = await supabase
           .from('children')
@@ -607,11 +609,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildWelcomeMessage() {
-    final familyLabel = (_firstName != null && _firstName!.isNotEmpty) ? '$_firstName Family' : 'Family';
+    final familyLabel = (_familyName != null && _familyName!.isNotEmpty) ? _familyName! : 'Family';
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
       child: Text(
-        'Welcome to $familyLabel !',
+        'Welcome ! $familyLabel',
         style: GoogleFonts.baloo2(fontSize: 22, fontWeight: FontWeight.w700, color: const Color(0xFF1A1A1A)),
       ),
     );
@@ -1082,7 +1084,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 4),
         SizedBox(
-          height: 138,
+          height: 136,
           child: ListView.builder(
             controller: _calendarScrollController,
             scrollDirection: Axis.horizontal,
@@ -1095,11 +1097,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final eventLabel = MockEvents.eventFor(date);
               final hasEvent = eventLabel != null;
 
-              Color backgroundColor;
-              Color textColor;
-              Color subTextColor;
               IconData? eventIcon;
-
               if (hasEvent) {
                 final lower = eventLabel!.toLowerCase();
                 if (lower.contains('vaccine')) {
@@ -1111,56 +1109,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 }
               }
 
-              if (isSelected) {
-                backgroundColor = const Color.fromARGB(255, 186, 111, 125);
-                textColor = Colors.white;
-                subTextColor = Colors.white70;
-              } else if (hasEvent) {
-                backgroundColor = const Color.fromARGB(255, 255, 217, 193);
-                textColor = const Color(0xFF1A1A1A);
-                subTextColor = const Color(0xFF6B6B6B);
-              } else {
-                backgroundColor = const Color(0xFFF1F1F3);
-                textColor = const Color(0xFF1A1A1A);
-                subTextColor = Colors.grey.shade400;
-              }
-
-              return GestureDetector(
+              return _DateCard(
+                weekday: weekdayShortNames[date.weekday - 1],
+                day: date.day,
+                isToday: isToday,
+                isSelected: isSelected,
+                hasEvent: hasEvent,
+                eventIcon: eventIcon,
                 onTap: () => setState(() => _selectedCalendarDate = date),
-                child: Container(
-                  width: 100,
-                  margin: const EdgeInsets.only(right: 14),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: backgroundColor,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: isSelected
-                        ? [BoxShadow(color: const Color(0xFFB05C6B).withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))]
-                        : null,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(weekdayShortNames[date.weekday - 1],
-                          style: GoogleFonts.baloo2(fontSize: 14, color: subTextColor, fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 5),
-                      Text('${date.day}',
-                          style: GoogleFonts.baloo2(fontSize: 30, fontWeight: FontWeight.w700, color: textColor)),
-                      const SizedBox(height: 5),
-                      if (eventIcon != null) ...[
-                        Icon(eventIcon, size: 14, color: subTextColor),
-                        const SizedBox(height: 2),
-                      ],
-                      Text(
-                        isToday && !hasEvent ? 'Today' : (eventLabel ?? 'No item'),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.baloo2(fontSize: 11, color: subTextColor, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
               );
             },
           ),
@@ -1205,9 +1161,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildBottomNav() {
     final initial = (_firstName != null && _firstName!.isNotEmpty) ? _firstName![0].toUpperCase() : null;
-    final activeChildName = (_children.isNotEmpty && _selectedIndex < _children.length)
-        ? _children[_selectedIndex].name
-        : 'Account';
+    final userDisplayName = (_firstName != null && _firstName!.isNotEmpty) ? _firstName! : 'Account';
 
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
@@ -1246,7 +1200,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   : const Icon(Icons.person, size: 13, color: Colors.black54),
             ),
           ),
-          label: activeChildName,
+          label: userDisplayName,
         ),
       ],
     );
@@ -1260,4 +1214,104 @@ class _QuickAction {
   final Color iconColor;
 
   _QuickAction({required this.title, required this.icon, required this.cardColor, required this.iconColor});
+}
+
+// 🌟 การ์ดวันที่: สี dusty rose เข้มล็อคไว้ที่ "วันนี้" เท่านั้น ไม่ขยับตามวันที่ถูกเลือก
+// วันที่ถูกเลือก (ไม่ใช่วันนี้) ใช้ dusty rose อ่อน ตัวหนังสือเข้ม
+// วันที่มี event (ไม่ได้เลือก/ไม่ใช่วันนี้) ยังคงใช้สีพีชเดิม พร้อมไอคอน event (ไม่มี text บอกชื่อ event แล้ว)
+// ตอนกดค้างจะมี overlay สีเทาอ่อนชั่วคราว ปล่อยนิ้วแล้วกลับสีปกติ
+class _DateCard extends StatefulWidget {
+  final String weekday;
+  final int day;
+  final bool isToday;
+  final bool isSelected;
+  final bool hasEvent;
+  final IconData? eventIcon;
+  final VoidCallback onTap;
+
+  const _DateCard({
+    required this.weekday,
+    required this.day,
+    required this.isToday,
+    required this.isSelected,
+    required this.hasEvent,
+    required this.eventIcon,
+    required this.onTap,
+  });
+
+  @override
+  State<_DateCard> createState() => _DateCardState();
+}
+
+class _DateCardState extends State<_DateCard> {
+  bool _isPressed = false;
+
+  static const Color _todayColor = Color.fromARGB(255, 186, 111, 125);
+  static const Color _selectedLightColor = Color(0xFFF3DBE0);
+  static const Color _eventColor = Color.fromARGB(255, 255, 217, 193);
+  static const Color _normalColor = Color(0xFFF1F1F3);
+  static const Color _pressedOverlay = Color(0xFFE3E3E5);
+
+  @override
+  Widget build(BuildContext context) {
+    Color backgroundColor;
+    Color textColor;
+    Color subTextColor;
+
+    if (widget.isToday) {
+      backgroundColor = _todayColor;
+      textColor = Colors.white;
+      subTextColor = Colors.white70;
+    } else if (widget.isSelected) {
+      backgroundColor = _selectedLightColor;
+      textColor = const Color(0xFF1A1A1A);
+      subTextColor = const Color(0xFF8A5A63);
+    } else if (widget.hasEvent) {
+      backgroundColor = _eventColor;
+      textColor = const Color(0xFF1A1A1A);
+      subTextColor = const Color(0xFF6B6B6B);
+    } else {
+      backgroundColor = _normalColor;
+      textColor = const Color(0xFF1A1A1A);
+      subTextColor = Colors.grey.shade400;
+    }
+
+    // 🌟 ลูกเล่นตอนกดค้าง: ทับด้วยสีเทาอ่อนชั่วคราว ไม่เปลี่ยน state จริง
+    if (_isPressed) {
+      backgroundColor = Color.alphaBlend(_pressedOverlay.withOpacity(0.55), backgroundColor);
+    }
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) => setState(() => _isPressed = false),
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 100,
+        margin: const EdgeInsets.only(right: 14),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: widget.isToday
+              ? [BoxShadow(color: _todayColor.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))]
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(widget.weekday,
+                style: GoogleFonts.baloo2(fontSize: 16, color: subTextColor, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text('${widget.day}',
+                style: GoogleFonts.baloo2(fontSize: 30, fontWeight: FontWeight.w700, color: textColor)),
+            const SizedBox(height: 8),
+            if (widget.eventIcon != null)
+              Icon(widget.eventIcon, size: 22, color: subTextColor),
+          ],
+        ),
+      ),
+    );
+  }
 }
