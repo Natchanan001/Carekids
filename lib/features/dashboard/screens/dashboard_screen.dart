@@ -130,6 +130,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _editFamilyName(String newName) async {
+    if (_familyId == null) return;
+
+    try {
+      await _repository.updateFamilyName(familyId: _familyId!, newName: newName);
+
+      setState(() {
+        _familyName = newName;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Family name updated ✅')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update family name: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _changeMemberRole(FamilyMember member, String newRole) async {
     try {
       await _repository.updateMemberRole(memberId: member.id, newRole: newRole);
@@ -248,6 +270,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _editChildName(child);
                 },
               ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text('Delete this child profile', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmDeleteChild(child);
+                },
+              ),
             ],
           ),
         );
@@ -312,6 +343,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update name: $e')));
+      }
+    }
+  }
+
+  // 🌟 Destructive Deletion Guardrail สำหรับ child profile (admin เท่านั้นที่เข้าถึงเมนูนี้ได้
+  // เพราะ onLongPress ใน ChildAvatarRow เช็ค isAdmin ไว้แล้วตั้งแต่ต้นทาง)
+  //
+  // กฎ:
+  // 1. ถ้าเหลือเด็กคนเดียวในระบบ -> บล็อกการลบทันที ป้องกัน empty state
+  // 2. ถ้ามีหลายคน -> ต้องผ่าน confirm dialog แบบ high-visibility เตือนชัดเจนว่า
+  //    ลบถาวร ข้อมูลกู้คืนไม่ได้ ก่อนลบจริง
+  Future<void> _confirmDeleteChild(ChildProfile child) async {
+    if (_children.length <= 1) {
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Can't Delete Profile"),
+          content: Text(
+            '${child.name} is the only child profile in this family. '
+            'At least one profile must remain. Add another child profile before deleting this one.',
+          ),
+          actions: [
+            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Expanded(child: Text('Delete Profile Permanently?')),
+          ],
+        ),
+        content: Text(
+          'This will permanently delete ${child.name}\'s profile, including all medication logs, '
+          'weight history, and reminders. This action cannot be undone and the data cannot be recovered.\n\n'
+          'Are you absolutely sure you want to continue?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete Permanently'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _repository.deleteChild(child.id);
+
+      setState(() {
+        if (_selectedIndex >= _children.length - 1) {
+          _selectedIndex = 0; // 🌟 กันชี้ index เกินขอบ list หลังลบคนที่อยู่ท้ายๆ list
+        }
+      });
+      await _loadData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${child.name}\'s profile has been deleted')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete profile: $e')),
+        );
       }
     }
   }
@@ -422,6 +530,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           isAdmin: _isAdmin,
           familyId: _familyId,
           onEditMemberName: _editMemberName,
+          onEditFamilyName: _editFamilyName,
           onChangeMemberRole: _changeMemberRole,
           onRemoveMember: _removeMember,
           onManageJoinRequests: _goToNotifications,

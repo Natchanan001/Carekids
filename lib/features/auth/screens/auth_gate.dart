@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:carekids/features/auth/screens/login_screen.dart';
 import 'package:carekids/features/auth/screens/register_screen.dart';
+import 'package:carekids/features/auth/screens/reset_password_screen.dart';
 import 'package:carekids/features/auth/screens/onboarding_screen.dart';
 import 'package:carekids/features/auth/screens/workspace_selection_screen.dart';
 import 'package:carekids/features/auth/screens/join_family_screen.dart';
@@ -20,6 +21,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   bool _showRegister = false;
+  bool _isPasswordRecovery = false; // 🌟 true เมื่อเข้าแอปผ่านลิงก์ reset password ในอีเมล
 
   String? _selectedPath;
   Future<Map<String, dynamic>?>? _profileFuture;
@@ -33,9 +35,18 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
     // ฟัง token refresh event เพื่ออัปเดต saved account ให้มี token ล่าสุดเสมอ
+    // 🌟 และฟัง passwordRecovery event ตอนผู้ใช้กดลิงก์ reset password จากอีเมล
+    // (Supabase SDK จะ emit event นี้เองอัตโนมัติเมื่อแอปถูกเปิดผ่าน deep link
+    // carekids://reset-password ที่ตั้งค่าไว้ใน Supabase Dashboard)
     _authStateSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
       final session = data.session;
+
+      if (event == AuthChangeEvent.passwordRecovery) {
+        setState(() => _isPasswordRecovery = true);
+        return;
+      }
+
       if (session != null && (event == AuthChangeEvent.tokenRefreshed || event == AuthChangeEvent.signedIn)) {
         _persistAccount(session);
       }
@@ -115,6 +126,14 @@ class _AuthGateState extends State<AuthGate> {
       stream: Supabase.instance.client.auth.onAuthStateChange,
       builder: (context, snapshot) {
         final session = Supabase.instance.client.auth.currentSession;
+
+        // 🌟 ถ้าเพิ่งเข้ามาผ่านลิงก์ reset password ให้โชว์หน้านี้ก่อนเสมอ
+        // ไม่ปล่อยให้ flow ปกติ (login/dashboard) ทำงานทับ แม้จะมี session ชั่วคราวแล้วก็ตาม
+        if (_isPasswordRecovery) {
+          return ResetPasswordScreen(
+            onResetComplete: () => setState(() => _isPasswordRecovery = false),
+          );
+        }
 
         if (session == null) {
           _profileFuture = null;

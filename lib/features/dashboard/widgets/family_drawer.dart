@@ -19,6 +19,7 @@ class FamilyDrawer extends StatelessWidget {
     required this.isAdmin,
     required this.familyId,
     required this.onEditMemberName,
+    required this.onEditFamilyName,
     required this.onChangeMemberRole,
     required this.onRemoveMember,
     required this.onManageJoinRequests,
@@ -34,6 +35,9 @@ class FamilyDrawer extends StatelessWidget {
 
   /// เรียกตอนกด Save ใน Edit Display Name popup
   final Future<void> Function(FamilyMember member, String newName) onEditMemberName;
+
+  /// เรียกตอนกด Save ใน Edit Family Name popup (เฉพาะ admin ที่เห็นปุ่มนี้)
+  final Future<void> Function(String newName) onEditFamilyName;
 
   /// เรียกตอนเลือก role ใหม่ใน Manage Role popup
   final Future<void> Function(FamilyMember member, String newRole) onChangeMemberRole;
@@ -55,11 +59,25 @@ class FamilyDrawer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 🌟 Header: ชื่อครอบครัวตามที่ผู้ใช้ตั้งไว้ตอนสร้างแฟมิลี่
+            // ไอคอนปากกา (เฉพาะ admin) เปิด popup แก้ไขชื่อแฟมิลี่
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Text(
-                familyName != null && familyName!.isNotEmpty ? familyName! : 'My Family',
-                style: GoogleFonts.baloo2(fontSize: 20, fontWeight: FontWeight.w700, color: const Color(0xFF1A1A1A)),
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      familyName != null && familyName!.isNotEmpty ? familyName! : 'My Family',
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.baloo2(fontSize: 20, fontWeight: FontWeight.w700, color: const Color(0xFF1A1A1A)),
+                    ),
+                  ),
+                  if (isAdmin)
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      tooltip: 'Edit family name',
+                      onPressed: () => _showEditFamilyNameDialog(context),
+                    ),
+                ],
               ),
             ),
             const Divider(height: 1),
@@ -269,6 +287,36 @@ class FamilyDrawer extends StatelessWidget {
 
     if (newName == null || newName == member.displayName) return;
     await onEditMemberName(member, newName);
+  }
+
+  Future<void> _showEditFamilyNameDialog(BuildContext context) async {
+    final controller = TextEditingController(text: familyName ?? '');
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit Family Name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Family name', border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isEmpty) return;
+              Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName == null || newName == familyName) return;
+    await onEditFamilyName(newName);
   }
 
   void _showRoleManagerSheet(BuildContext context, FamilyMember member) {

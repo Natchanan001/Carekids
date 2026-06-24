@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AddAccountRegisterScreen extends StatefulWidget {
@@ -28,10 +29,10 @@ class _AddAccountRegisterScreenState extends State<AddAccountRegisterScreen> {
       return;
     }
 
-    final phoneDigitsOnly = RegExp(r'^[0-9]+$');
-    if (!phoneDigitsOnly.hasMatch(_phoneController.text.trim())) {
+    final thaiPhonePattern = RegExp(r'^0[0-9]{9}$');
+    if (!thaiPhonePattern.hasMatch(_phoneController.text.trim())) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phone number must contain digits only')),
+        const SnackBar(content: Text('Phone number must be exactly 10 digits and start with 0')),
       );
       return;
     }
@@ -102,8 +103,14 @@ class _AddAccountRegisterScreenState extends State<AddAccountRegisterScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _phoneController,
-                decoration: const InputDecoration(labelText: 'Phone Number', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                ),
                 keyboardType: TextInputType.phone,
+                maxLength: 10,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
               const SizedBox(height: 12),
               TextField(
