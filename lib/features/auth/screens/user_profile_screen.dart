@@ -35,9 +35,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           .eq('id', user.id)
           .single();
 
-      _firstNameController.text = profile['first_name'] ?? '';
-      _lastNameController.text = profile['last_name'] ?? '';
-      _phoneController.text = profile['phone_number'] ?? '';
+      _firstNameController.text = profile['first_name']?.toString() ?? '';
+      _lastNameController.text = profile['last_name']?.toString() ?? '';
+      _phoneController.text = profile['phone_number']?.toString() ?? '';
       _emailController.text = user.email ?? '';
       _role = profile['role'];
     } catch (e) {

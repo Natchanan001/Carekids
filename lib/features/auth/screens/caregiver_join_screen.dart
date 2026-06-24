@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+// หน้าเก่า ไม่ใช่แล้ว !!!!!!
 class CaregiverJoinScreen extends StatefulWidget {
   final VoidCallback onFinished;
   final VoidCallback? onBack; // 🌟 เพิ่มตัวแปรรับฟังก์ชัน Callback ย้อนกลับ

@@ -141,6 +141,11 @@ class DashboardRepository {
     return _supabase.from('profiles').update({'role': newRole}).eq('id', memberId);
   }
 
+  /// แก้ไขชื่อแฟมิลี่ (admin เท่านั้นที่เรียกได้ — เช็คสิทธิ์ที่ UI ก่อนเรียก)
+  Future<void> updateFamilyName({required String familyId, required String newName}) {
+    return _supabase.from('families').update({'name': newName}).eq('id', familyId);
+  }
+
   /// นำสมาชิกออกจากแฟมิลี่ด้วยการล้าง family_id (ไม่ลบ profile/บัญชีทั้งหมด)
   /// ผู้ใช้ยังคงมีบัญชีอยู่ สามารถ join แฟมิลี่ใหม่ได้ภายหลัง
   Future<void> removeMemberFromFamily(String memberId) {
@@ -187,5 +192,16 @@ class DashboardRepository {
 
     await _supabase.from('children').update({'photo_url': cacheBustedUrl}).eq('id', childId);
     return cacheBustedUrl;
+  }
+
+  /// ลบ child profile ออกจากระบบถาวร (admin เท่านั้นที่เรียกได้ — เช็คสิทธิ์ที่ UI ก่อนเรียก)
+  ///
+  /// ✅ ยืนยันแล้วว่า medications_child_id_fkey และ weight_logs_child_id_fkey
+  /// ตั้ง ON DELETE CASCADE ไว้แล้วใน Supabase (เช็คเมื่อ 2026-06-22)
+  /// ดังนั้นการลบ children row นี้จะลบ medications/weight_logs ที่เกี่ยวข้องให้อัตโนมัติ
+  /// ⚠️ ถ้าเพิ่มตารางใหม่ที่มี child_id ในอนาคต อย่าลืมตั้ง CASCADE ให้ด้วย ไม่งั้นจะ
+  /// ลบเด็กไม่ได้เพราะ FK constraint violation
+  Future<void> deleteChild(String childId) {
+    return _supabase.from('children').delete().eq('id', childId);
   }
 }
