@@ -33,7 +33,7 @@ class DateCalendarSection extends StatelessWidget {
           children: [
             Text('Date', style: GoogleFonts.baloo2(fontSize: 22, fontWeight: FontWeight.w700, color: const Color(0xFF1A1A1A))),
             IconButton(
-              icon: const Icon(Icons.calendar_month, color: Color.fromARGB(255, 192, 118, 131)),
+              icon: const Icon(Icons.calendar_month, color: Color.fromARGB(255, 159, 102, 113)),
               tooltip: 'Full calendar',
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CalendarScreen())),
             ),
@@ -41,7 +41,7 @@ class DateCalendarSection extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         SizedBox(
-          height: 136,
+          height: 136, // 🌟 ขยายความสูงเพิ่มจาก 136 เป็น 152 เพื่อรองรับตัวหนังสือใต้ไอคอนไม่ให้เบียดกันจนล้นค่ะ
           child: ListView.builder(
             controller: scrollController,
             scrollDirection: Axis.horizontal,
@@ -73,6 +73,7 @@ class DateCalendarSection extends StatelessWidget {
                 isSelected: isSelected,
                 hasEvent: hasEvent,
                 eventIcon: eventIcon,
+                eventLabel: eventLabel, // 🌟 ส่งข้อความชื่อนัดหมายเข้าไปด้วย
                 onTap: () => onDateSelected(date),
               );
             },
@@ -126,7 +127,7 @@ class _CalendarDetailPanel extends StatelessWidget {
 
 /// 🌟 การ์ดวันที่: สี dusty rose เข้มล็อคไว้ที่ "วันนี้" เท่านั้น ไม่ขยับตามวันที่ถูกเลือก
 /// วันที่ถูกเลือก (ไม่ใช่วันนี้) ใช้ dusty rose อ่อน ตัวหนังสือเข้ม
-/// วันที่มี event (ไม่ได้เลือก/ไม่ใช่วันนี้) ใช้สีพีช พร้อมไอคอน event (ไม่มี text บอกชื่อ event)
+/// วันที่มี event (ไม่ได้เลือก/ไม่ใช่วันนี้) ใช้สีพีช พร้อมไอคอนและข้อความบอกชื่องานนัดหมาย
 /// ตอนกดค้างจะมี overlay สีเทาอ่อนชั่วคราว ปล่อยนิ้วแล้วกลับสีปกติ
 class DateCard extends StatefulWidget {
   const DateCard({
@@ -137,6 +138,7 @@ class DateCard extends StatefulWidget {
     required this.isSelected,
     required this.hasEvent,
     required this.eventIcon,
+    this.eventLabel, // 🌟 รับค่า eventLabel เข้ามา (เป็นสาย String ที่ nullable เผื่อบางวันไม่มีนัด)
     required this.onTap,
   });
 
@@ -146,6 +148,7 @@ class DateCard extends StatefulWidget {
   final bool isSelected;
   final bool hasEvent;
   final IconData? eventIcon;
+  final String? eventLabel; // 🌟 เพิ่มตัวแปรมารองรับตรงนี้จ้า
   final VoidCallback onTap;
 
   @override
@@ -155,7 +158,7 @@ class DateCard extends StatefulWidget {
 class _DateCardState extends State<DateCard> {
   bool _isPressed = false;
 
-  static const Color _todayColor = Color.fromARGB(255, 186, 111, 125);
+  static const Color _todayColor = Color.fromARGB(255, 176, 129, 138);
   static const Color _selectedLightColor = Color(0xFFF3DBE0);
   static const Color _eventColor = Color.fromARGB(255, 255, 217, 193);
   static const Color _normalColor = Color(0xFFF1F1F3);
@@ -182,7 +185,7 @@ class _DateCardState extends State<DateCard> {
     } else {
       backgroundColor = _normalColor;
       textColor = const Color(0xFF1A1A1A);
-      subTextColor = Colors.grey.shade400;
+      subTextColor = const Color.fromARGB(255, 237, 61, 61);
     }
 
     // 🌟 ลูกเล่นตอนกดค้าง: ทับด้วยสีเทาอ่อนชั่วคราว ไม่เปลี่ยน state จริง
@@ -199,7 +202,7 @@ class _DateCardState extends State<DateCard> {
         duration: const Duration(milliseconds: 120),
         width: 100,
         margin: const EdgeInsets.only(right: 14),
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 14), // 🌟 ปรับ padding เล็กน้อยให้องค์ประกอบไม่เบียดกันเกินไป
         decoration: BoxDecoration(
           color: backgroundColor,
           borderRadius: BorderRadius.circular(20),
@@ -211,12 +214,26 @@ class _DateCardState extends State<DateCard> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(widget.weekday,
-                style: GoogleFonts.baloo2(fontSize: 16, color: subTextColor, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
+                style: GoogleFonts.baloo2(fontSize: 14, color: subTextColor, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
             Text('${widget.day}',
-                style: GoogleFonts.baloo2(fontSize: 30, fontWeight: FontWeight.w700, color: textColor)),
-            const SizedBox(height: 8),
-            if (widget.eventIcon != null) Icon(widget.eventIcon, size: 22, color: subTextColor),
+                style: GoogleFonts.baloo2(fontSize: 26, fontWeight: FontWeight.w700, color: textColor)), // 🌟 ปรับขนาดลงเหลือ 26 เพื่อให้มีพื้นที่โชว์ตัวหนังสือด้านล่างอย่างสมดุล
+            const SizedBox(height: 4),
+            if (widget.eventIcon != null) ...[
+              Icon(widget.eventIcon, size: 18, color: subTextColor),
+              const SizedBox(height: 2),
+              // 🌟 แสดงชื่อนัดหมายใต้ไอคอน มีการดักตัวอักษรยาวเกินให้ตัดเป็น ... ด้วยตัวแม่
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  widget.eventLabel ?? '',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.baloo2(fontSize: 11, fontWeight: FontWeight.w600, color: subTextColor, height: 1.1),
+                ),
+              ),
+            ],
           ],
         ),
       ),

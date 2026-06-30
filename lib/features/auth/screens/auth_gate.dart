@@ -74,7 +74,7 @@ class _AuthGateState extends State<AuthGate> {
   Future<Map<String, dynamic>?> _fetchProfile(String userId) {
     return Supabase.instance.client
         .from('profiles')
-        .select('onboarding_complete, role, first_name, last_name')
+        .select('onboarding_complete, role, first_name, last_name, family_id')
         .eq('id', userId)
         .maybeSingle();
   }
@@ -169,6 +169,22 @@ class _AuthGateState extends State<AuthGate> {
               if (!onboardingComplete) {
                 return OnboardingScreen(onFinished: refreshAll);
               }
+
+              // 🌟 ถ้า family_id เป็น null แปลว่าถูก remove ออกจากแฟมิลี่แล้ว
+              // ส่งไป WorkspaceSelectionScreen เพื่อให้เลือกสร้างหรือ join แฟมิลี่ใหม่
+              final familyId = profile['family_id'];
+              if (familyId == null) {
+                // เช็ค _selectedPath ก่อน เพราะปุ่ม Create/Join จะ set _selectedPath
+                // แล้ว setState ให้ rebuild — ต้องรับ path นั้นตรงนี้ด้วย
+                if (_selectedPath == 'create') {
+                  return OnboardingScreen(onFinished: refreshAll, onBack: resetPath);
+                }
+                if (_selectedPath == 'join') {
+                  return JoinFamilyScreen(onSubmitted: refreshAll, onBack: resetPath);
+                }
+                return WorkspaceSelectionScreen(onPathSelected: selectPath);
+              }
+
               return const DashboardScreen();
             }
 

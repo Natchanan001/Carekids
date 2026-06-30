@@ -59,6 +59,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         .maybeSingle();
 
     if (existingProfile == null) {
+      // กรณีที่ 1: ไม่มี profile เลย → สร้างแฟมิลี่ใหม่ + INSERT profile
       final meta = user.userMetadata ?? {};
       final family = await supabase
           .from('families')
@@ -75,7 +76,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         'role': 'admin',
         'onboarding_complete': false,
       });
+    } else if (existingProfile['family_id'] == null) {
+      // 🌟 กรณีที่ 2: มี profile แต่ family_id = null (โดน remove ออกจากแฟมิลี่)
+      // → สร้างแฟมิลี่ใหม่แล้ว UPDATE profile ที่มีอยู่แทน INSERT ใหม่
+      final family = await supabase
+          .from('families')
+          .insert({'name': '${_familyNameController.text.trim()}\'s Family'})
+          .select()
+          .single();
+
+      await supabase.from('profiles').update({
+        'family_id': family['id'],
+        'role': 'admin',
+        'onboarding_complete': false,
+      }).eq('id', user.id);
     } else {
+      // กรณีที่ 3: มี profile และมี family_id แล้ว → แค่ UPDATE ชื่อแฟมิลี่
       await supabase
           .from('families')
           .update({'name': '${_familyNameController.text.trim()}\'s Family'})
@@ -290,80 +306,90 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 32),
-          const Text('Add Child Information 👶',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text('This information is used to calculate appropriate medication dosages',
-              style: TextStyle(fontSize: 16, color: Colors.grey)),
-          const SizedBox(height: 32),
-          TextField(
-            controller: _childNameController,
-            decoration: const InputDecoration(
-              labelText: 'Child\'s Name',
-              border: OutlineInputBorder(),
+          // 🌟 ห่อ content ด้วย SingleChildScrollView ป้องกัน overflow ตอนแป้นพิมพ์ขึ้น
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 32),
+                  const Text('Add Child Information 👶',
+                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('This information is used to calculate appropriate medication dosages',
+                      style: TextStyle(fontSize: 16, color: Colors.grey)),
+                  const SizedBox(height: 32),
+                  TextField(
+                    controller: _childNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Child\'s Name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  const Text('Gender', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          showCheckmark: true,
+                          selectedColor: Colors.blue.shade100,
+                          label: const Text('Male'),
+                          selected: _selectedGender == 'male',
+                          onSelected: (selected) {
+                            if (selected) setState(() => _selectedGender = 'male');
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ChoiceChip(
+                          showCheckmark: true,
+                          selectedColor: Colors.pink.shade100,
+                          label: const Text('Female'),
+                          selected: _selectedGender == 'female',
+                          onSelected: (selected) {
+                            if (selected) setState(() => _selectedGender = 'female');
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextField(
+                    controller: _weightController,
+                    decoration: const InputDecoration(
+                      labelText: 'Weight (kg)',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        setState(() => _selectedBirthdate = picked);
+                      }
+                    },
+                    child: Text(_selectedBirthdate == null
+                        ? 'Select Birthdate'
+                        : 'Birthdate: ${_selectedBirthdate!.day}/${_selectedBirthdate!.month}/${_selectedBirthdate!.year}'),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 16),
-
-          const Text('Gender', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: ChoiceChip(
-                  showCheckmark: true, // 🌟 เพิ่มติ๊กถูกให้ชัดเจน
-                  selectedColor: Colors.blue.shade100, // 🌟 ใส่สีตอนเลือก
-                  label: const Text('Male'),
-                  selected: _selectedGender == 'male',
-                  onSelected: (selected) {
-                    // 🌟 ดักเช็กให้รับค่าเมื่อถูกจิ้มจริงๆ เท่านั้น
-                    if (selected) setState(() => _selectedGender = 'male');
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ChoiceChip(
-                  showCheckmark: true,
-                  selectedColor: Colors.pink.shade100,
-                  label: const Text('Female'),
-                  selected: _selectedGender == 'female',
-                  onSelected: (selected) {
-                    if (selected) setState(() => _selectedGender = 'female');
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          TextField(
-            controller: _weightController,
-            decoration: const InputDecoration(
-              labelText: 'Weight (kg)',
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: DateTime.now(),
-                firstDate: DateTime(2000),
-                lastDate: DateTime.now(),
-              );
-              if (picked != null) {
-                setState(() => _selectedBirthdate = picked);
-              }
-            },
-            child: Text(_selectedBirthdate == null
-                ? 'Select Birthdate'
-                : 'Birthdate: ${_selectedBirthdate!.day}/${_selectedBirthdate!.month}/${_selectedBirthdate!.year}'),
-          ),
-          const Spacer(),
+          // 🌟 ปุ่ม Back/Next อยู่นอก scroll ติดด้านล่างเสมอ ไม่ถูกแป้นพิมพ์บัง
           Row(
             children: [
               Expanded(
@@ -375,7 +401,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  // 🌟 เปลี่ยนมาใช้ฟังก์ชันตรวจหน้าด่าน _handleStep2Next ที่เราสร้างใหม่
                   onPressed: _handleStep2Next,
                   child: const Text('Next'),
                 ),

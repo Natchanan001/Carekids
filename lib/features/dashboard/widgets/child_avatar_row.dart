@@ -43,13 +43,13 @@ class ChildAvatarRow extends StatelessWidget {
     final rowWidth = itemCount * _avatarSlotWidth;
 
     return SizedBox(
-      height: 96,
+      height: 110,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: SizedBox(
           width: rowWidth,
-          height: 96,
+          height: 110,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -155,9 +155,9 @@ class _ChildAvatar extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.baloo2(
-              fontSize: 13,
+              fontSize: isSelected ? 15 : 13,
               color: isSelected ? const Color(0xFF5B9DF0) : const Color(0xFF333333),
-              fontWeight: FontWeight.w600,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
             ),
           ),
         ],
