@@ -146,10 +146,10 @@ class DashboardRepository {
     return _supabase.from('families').update({'name': newName}).eq('id', familyId);
   }
 
-  /// นำสมาชิกออกจากแฟมิลี่ด้วยการล้าง family_id (ไม่ลบ profile/บัญชีทั้งหมด)
-  /// ผู้ใช้ยังคงมีบัญชีอยู่ สามารถ join แฟมิลี่ใหม่ได้ภายหลัง
+  /// นำสมาชิกออกจากแฟมิลี่ผ่าน RPC (SECURITY DEFINER ข้าม RLS ได้)
+  /// ต้องรัน SQL ใน 04_remove_member_rpc.sql ก่อนใช้งาน
   Future<void> removeMemberFromFamily(String memberId) {
-    return _supabase.from('profiles').update({'family_id': null}).eq('id', memberId);
+    return _supabase.rpc('remove_member_from_family', params: {'target_user_id': memberId});
   }
 
   Future<void> signOut() => _supabase.auth.signOut();
